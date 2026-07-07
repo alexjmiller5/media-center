@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/electrikmilk/cherri/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/electrikmilk/cherri/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/electrikmilk/cherri/releases.atom"/>
+  <title>Release notes from cherri</title>
+  <updated>2026-06-20T18:30:00Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/570893536/v2.4.1</id>
+    <updated>2026-06-20T18:30:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/electrikmilk/cherri/releases/tag/v2.4.1"/>
+    <title>v2.4.1</title>
+    <content type="html">&lt;p&gt;Bug fixes and improvements.&lt;/p&gt;</content>
+    <author><name>electrikmilk</name></author>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/570893536/v2.4.0</id>
+    <updated>2026-05-02T14:05:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/electrikmilk/cherri/releases/tag/v2.4.0"/>
+    <title>v2.4.0</title>
+    <content type="html">&lt;p&gt;New actions.&lt;/p&gt;</content>
+    <author><name>electrikmilk</name></author>
+  </entry>
+</feed>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Blog</title>
+    <link>https://blog.example.com</link>
+    <description>A sample RSS 2.0 feed</description>
+    <item>
+      <title>Third post</title>
+      <link>https://blog.example.com/third</link>
+      <guid>https://blog.example.com/third</guid>
+      <pubDate>Sun, 05 Jul 2026 12:00:00 GMT</pubDate>
+      <description>Newest post</description>
+    </item>
+    <item>
+      <title>Second post</title>
+      <link>https://blog.example.com/second</link>
+      <guid>https://blog.example.com/second</guid>
+      <pubDate>Wed, 01 Jul 2026 08:30:00 GMT</pubDate>
+      <description>Middle post</description>
+    </item>
+    <item>
+      <title>First post</title>
+      <link>https://blog.example.com/first</link>
+      <guid>https://blog.example.com/first</guid>
+      <pubDate>Mon, 15 Jun 2026 09:00:00 GMT</pubDate>
+      <description>Oldest post</description>
+    </item>
+  </channel>
+</rss>
