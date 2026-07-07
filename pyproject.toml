@@ -1,0 +1,27 @@
+[project]
+name = "my-media-center"
+version = "0.1.0"
+description = "Headless pollers that watch media sources (RSS blogs, tech changelogs, later Trakt/YouTube) and push updates into Notion"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "structlog>=25.1",
+]
+
+[dependency-groups]
+dev = [
+    "modal>=1.0",
+    "pytest>=8.3",
+    "pytest-mock>=3.14",
+    "ruff>=0.9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+src = ["src", "tests"]
+line-length = 100

@@ -1,0 +1,30 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # The one GH secret: this project's 1Password service-account token (see
+    # new-project skill). It authenticates op for BOTH reading the deploy creds
+    # and pushing the app secrets — CI owns the full deploy, no manual sync.
+    env:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: 1Password/install-cli-action@v4
+      - uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          MODAL_TOKEN_ID: op://MediaCenter/Modal my-media-center/token-id
+          MODAL_TOKEN_SECRET: op://MediaCenter/Modal my-media-center/token-secret
+      - run: uv run pytest -m "not integration"
+      # Secrets must exist BEFORE deploy — app.py references modal.Secret.from_name.
+      - name: Push app secrets to Modal
+        run: op inject -i .env.tpl | uv run scripts/sync_secrets.py my-media-center
+      - run: uv run modal deploy app.py
