@@ -39,11 +39,30 @@ def webhook(payload: dict) -> dict:
     return {"status": "accepted", "call_id": call.object_id}
 
 
-# Modal cron is the preferred home for schedules (Starter plan: 5 deployed
-# crons TOTAL across all apps — overflow to GHA cron / CF Cron Triggers).
-# Delete this function if this service has no schedule.
+# ASSUMPTION (2026-07-07 overnight): Modal cron is the intended home for this
+# poller per the four-pillar rules, but the Starter plan allows only 5 deployed
+# crons across ALL apps — NOT deployed yet; Alex confirms the slot budget first
+# (see personal-infra skill). The schedule only claims a slot once deployed.
 @app.function(image=image, secrets=secrets, schedule=modal.Cron("30 9 * * *"))
 def daily() -> dict:
     from core.pipeline import run
 
     return run({"trigger": "cron"})
+
+
+def main() -> None:
+    """Run poll-all-sources once, locally (no Modal):
+
+    op run --env-file=.env.tpl -- uv run python app.py
+    """
+    import sys
+
+    sys.path.insert(0, "src")  # mirrors the image's src/core -> /root/core mapping
+
+    from core.pipeline import poll_all_sources
+
+    print(poll_all_sources())
+
+
+if __name__ == "__main__":
+    main()
