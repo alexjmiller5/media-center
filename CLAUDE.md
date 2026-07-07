@@ -46,6 +46,26 @@ not a script catalog; one-offs go in `scripts/` and run directly.
 Write the test in `tests/` first, then the `src/core/` code. `app.py` shim
 functions stay thin enough to not need tests.
 
+## What exists (2026-07-07 overnight)
+
+RSS watcher vertical slice — all unit-tested, no live calls in tests:
+
+- `src/core/watcher.py` — `parse_feed` (feedparser; RSS 2.0 + GitHub
+  releases.atom fixtures in `tests/fixtures/`), `new_entries` (cursor = the
+  source row's Last Checked timestamp / optional last GUID), `route` (new
+  entries go back to the DB the source row came from; a routing-rules layer
+  is the upgrade path if one feed ever needs to split)
+- `src/core/notion.py` — thin httpx `NotionClient`: `list_sources` (keeps
+  Status=Tracked rows with a Feed URL), `upsert_entry` (dedup by Site URL),
+  `mark_checked` (advances the cursor)
+- `src/core/pipeline.py` — `poll_all_sources()` over `SOURCE_DBS`;
+  per-source failures are logged and skipped, cursor advances only on success
+- `app.py` `main()` — one local poll run:
+  `op run --env-file=.env.tpl -- uv run python app.py`
+
+NOT deployed yet: the Modal cron slot (5 total across all apps) needs Alex's
+sign-off — see the ASSUMPTION comment in `app.py`.
+
 ## Setup status
 
 1Password vault (`MediaCenter`) + CI service account do not exist yet — see
