@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Headless pollers that watch media sources (RSS blogs, tech changelogs, later Trakt/YouTube) and push updates into Notion"
 requires-python = ">=3.13"
 dependencies = [
+    "feedparser>=6.0.12",
     "httpx>=0.28",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
