@@ -51,3 +51,18 @@ functions stay thin enough to not need tests.
 1Password vault (`MediaCenter`) + CI service account do not exist yet — see
 "Manual setup (Alex)" in README.md. Until then `just sync-secrets`,
 `just deploy`, and CI deploys will fail on the op:// references.
+
+## Notion IDs (source-of-truth DBs for pollers)
+
+Created 2026-07-06 (overnight sprint). Use `data_source_id` for all API calls
+(`Notion-Version: 2026-03-11`).
+
+| DB | data_source_id | Purpose |
+|---|---|---|
+| Tech Changelogs | `0296e086-a630-4a78-9dd9-c935f00a67f4` | Tracked changelog sources (Name, Site URL, Feed URL, Status Tracked/Paused, Last Checked, Notes) |
+| Blogs | `6cbb5c8a-30b7-4332-8f06-36a706c7c646` | Tracked blog sources (same schema) |
+| Blog Posts | `31203953-a8af-8021-91bb-000b1468b912` | Pre-existing stub (title only) — where scraped posts land |
+| YouTube Posts | `31203953-a8af-80e0-96f1-000b140d566a` | Pre-existing stub |
+
+Rows with an empty Feed URL need special handling (no RSS exists) — see each
+row's Notes property.
