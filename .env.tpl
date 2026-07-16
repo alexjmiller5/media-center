@@ -6,3 +6,4 @@
 #   VAR_NAME=op :// vault / item / field   <- remove the spaces; spelled out
 #   because a literal reference in a comment breaks `op inject`.
 NOTION_API_KEY=op://MediaCenter/Notion API Key/credential
+SOURCE_DBS=op://MediaCenter/Notion API Key/source dbs

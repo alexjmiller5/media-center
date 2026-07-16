@@ -16,25 +16,26 @@ from core.watcher import new_entries, parse_feed, route
 
 log = structlog.get_logger()
 
-# The two source DBs (see CLAUDE.md): Tech Changelogs, Blogs.
-SOURCE_DBS = (
-    "0296e086-a630-4a78-9dd9-c935f00a67f4",
-    "6cbb5c8a-30b7-4332-8f06-36a706c7c646",
-)
-
 
 def run(payload: dict) -> dict:
     log.info("run", payload=payload)
     return poll_all_sources()
 
 
-def poll_all_sources(notion: NotionClient | None = None, http: httpx.Client | None = None) -> dict:
-    notion = notion or NotionClient(Settings().notion_api_key)
+def poll_all_sources(
+    notion: NotionClient | None = None,
+    http: httpx.Client | None = None,
+    source_dbs: tuple[str, ...] | None = None,
+) -> dict:
+    if notion is None or source_dbs is None:
+        settings = Settings()
+        notion = notion or NotionClient(settings.notion_api_key)
+        source_dbs = source_dbs or settings.source_dbs
     http = http or httpx.Client(
         timeout=30, follow_redirects=True, headers={"User-Agent": "my-media-center/0.1"}
     )
     checked = created = 0
-    for db in SOURCE_DBS:
+    for db in source_dbs:
         for source in notion.list_sources(db):
             try:
                 resp = http.get(source.feed_url)
