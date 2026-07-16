@@ -19,7 +19,7 @@ runs in tests, on the mac mini via launchd, or on any future platform.
   Proxy Auth Tokens). Never expose an unauthenticated endpoint.
 - Cron: Modal is the PREFERRED home for schedules — but the Starter plan
   allows **5 deployed crons across ALL apps**, so track the budget. Overflow
-  goes to GHA cron or CF Cron Triggers (see the `personal-infra` skill).
+  goes to GHA cron or CF Cron Triggers (see the `infra` skill).
 
 ## Stack
 
@@ -58,7 +58,8 @@ RSS watcher vertical slice — all unit-tested, no live calls in tests:
 - `src/core/notion.py` — thin httpx `NotionClient`: `list_sources` (keeps
   Status=Tracked rows with a Feed URL), `upsert_entry` (dedup by Site URL),
   `mark_checked` (advances the cursor)
-- `src/core/pipeline.py` — `poll_all_sources()` over `SOURCE_DBS`;
+- `src/core/pipeline.py` — `poll_all_sources()` over the `SOURCE_DBS` env
+  var (comma-separated data_source IDs, see `core/config.py`);
   per-source failures are logged and skipped, cursor advances only on success
 - `app.py` `main()` — one local poll run:
   `op run --env-file=.env.tpl -- uv run python app.py`
@@ -69,7 +70,7 @@ sign-off — see the ASSUMPTION comment in `app.py`.
 ## Setup status
 
 1Password vault (`MediaCenter`) + CI service account do not exist yet — see
-"Manual setup (Alex)" in README.md. Until then `just sync-secrets`,
+"Manual setup" in README.md. Until then `just sync-secrets`,
 `just deploy`, and CI deploys will fail on the op:// references.
 
 ## Notion IDs (source-of-truth DBs for pollers)
