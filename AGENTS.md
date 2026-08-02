@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 my-media-center: headless pollers (RSS blog/changelog watcher now; Trakt +
 YouTube sync later) that push updates into Alex's Notion DBs. Notion is the
@@ -30,7 +30,7 @@ Instantiate `Settings()` inside functions, never at import time.
 
 ## Commands
 
-Standard verb set (see global CLAUDE.md) — the justfile is the interface,
+Standard verb set (see global AGENTS.md) — the justfile is the interface,
 not a script catalog; one-offs go in `scripts/` and run directly.
 
 | Command | Purpose |
