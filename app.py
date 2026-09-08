@@ -13,9 +13,6 @@ app = modal.App(APP_NAME)
 
 image = (
     modal.Image.debian_slim(python_version="3.13")
-    # media-fields is a git dependency and uv shells out to git to fetch it;
-    # debian_slim has no git binary, so `uv sync` fails without this.
-    .apt_install("git")
     .uv_sync(extra_options="--no-dev")
     .add_local_dir("src/core", remote_path="/root/core", ignore=["**/__pycache__"])
 )
