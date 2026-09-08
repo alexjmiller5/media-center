@@ -65,7 +65,7 @@ def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
 
 
 def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
-    channels = hub.pull("youtube_channels", ["id", "uploads_playlist_id", "backfilled", "follow"])
+    channels = hub.pull("youtube_channels", ["id", "uploads_playlist_id", "backfilled"])
     known = {v["id"] for v in hub.pull("youtube_videos", ["id"])}
     out = {"channels": len(channels), "videos": 0, "failed": 0, "rejected": 0}
     for c in channels:
@@ -89,19 +89,13 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
             )
             if not c.get("backfilled"):
                 # The full walk completed: flag it even if rows were rejected - a
-                # rejected id is still absent, so the next run retries it.
-                # `follow` is required by the hub's validator, so it must ride along.
+                # rejected id is still absent, so the next run retries it. Just
+                # the flag: the hub validates required columns against the
+                # merged row, so a partial push needs no echo of the rest.
                 _push_chunked(
                     hub,
                     "youtube_channels",
-                    [
-                        {
-                            "id": c["id"],
-                            "backfilled": 1,
-                            "follow": c["follow"],
-                            "updated_at": now_iso(),
-                        }
-                    ],
+                    [{"id": c["id"], "backfilled": 1, "updated_at": now_iso()}],
                 )
             out["videos"] += len(accepted)
             out["rejected"] += len(rejected)

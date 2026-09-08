@@ -88,5 +88,7 @@ functions stay thin enough to not need tests.
 This service reads `tv_shows`, `youtube_channels` and `feeds` (the
 follow/tracking lists) and writes `tv_episodes`, `youtube_videos`,
 `articles` and `provenance`, plus the one flag it owns on a follow list:
-`youtube_channels.backfilled`. Table schemas and conventions are documented in
+`youtube_channels.backfilled` - pushed as a partial row (`{id, backfilled,
+updated_at}`), since the hub checks required columns against the merged row.
+Table schemas and conventions are documented in
 the `life-map` skill - read it before adding a column or a new source table.

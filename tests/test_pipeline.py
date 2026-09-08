@@ -321,7 +321,7 @@ def test_run_daily_returns_all_three_sections(mocker):
     assert set(out) == {"tv", "youtube", "feeds"}
 
 
-def test_sync_youtube_flag_push_carries_follow_even_when_a_video_was_rejected():
+def test_sync_youtube_flag_push_is_a_partial_row_even_when_a_video_was_rejected():
     page = fx("playlist_items.json")
     last = {**page, "items": page["items"][:1]}
     last.pop("nextPageToken", None)
@@ -353,8 +353,10 @@ def test_sync_youtube_flag_push_carries_follow_even_when_a_video_was_rejected():
     out = pipeline.sync_youtube(hub, http, "KEY")
     assert out["rejected"] == 2  # the fixture repeats its first item on the last page
     flag = hub.pushed["youtube_channels"][0]
-    assert set(flag) == {"id", "backfilled", "follow", "updated_at"}
-    assert flag["id"] == "UCnew" and flag["backfilled"] == 1 and flag["follow"] == 1
+    # the hub checks required columns against the merged row, so the flag push
+    # carries only the flag - never an echo of the channel's other columns
+    assert set(flag) == {"id", "backfilled", "updated_at"}
+    assert flag["id"] == "UCnew" and flag["backfilled"] == 1
 
 
 def test_sync_youtube_rejected_flag_push_is_logged():
@@ -372,7 +374,7 @@ def test_sync_youtube_rejected_flag_push_is_logged():
 
     def reject(table, row):
         if table == "youtube_channels":
-            return {"id": row["id"], "col": "follow", "rule": "required", "message": "required"}
+            return {"id": row["id"], "col": "backfilled", "rule": "type", "message": "bad"}
         return None
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
