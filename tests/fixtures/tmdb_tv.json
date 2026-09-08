@@ -1,0 +1,53 @@
+{
+ "id": 76479,
+ "name": "The Boys",
+ "status": "Ended",
+ "seasons": [
+  {
+   "air_date": "2019-05-01",
+   "episode_count": 76,
+   "id": 163277,
+   "name": "Specials",
+   "overview": "",
+   "poster_path": "/twqkXVkBuRTZSTHp6e5l8iygFEK.jpg",
+   "season_number": 0,
+   "vote_average": 0.0
+  },
+  {
+   "air_date": "2019-07-25",
+   "episode_count": 8,
+   "id": 98085,
+   "name": "Season 1",
+   "overview": "Superpowered individuals are recognized as superheroes, but in reality, abuse their powers for personal gain, information the public is kept unaware of.",
+   "poster_path": "/iikrapejulhIvbNgUjj468mUE0I.jpg",
+   "season_number": 1,
+   "vote_average": 8.2
+  },
+  {
+   "air_date": "2020-09-03",
+   "episode_count": 8,
+   "id": 154681,
+   "name": "Season 2",
+   "overview": "The even more intense, more insane season two finds The Boys on the run from the law, hunted by the Supes, and desperately trying to regroup and fight back against Vought. In hiding, Hughie, Mother\u2019s Milk, Frenchie and Kimiko try to adjust to a new normal, with Butcher nowhere to be found. Meanwhile, Starlight must navigate her place in The Seven as Homelander sets his sights on taking complete control. His power is threatened with the addition of Stormfront, a social media-savvy new Supe, who has an agenda of her own. On top of that, the Supervillain threat takes center stage and makes waves as Vought seeks to capitalize on the nation\u2019s paranoia.",
+   "poster_path": "/hjO01XnizdVgwygBNzDwUEK9CDB.jpg",
+   "season_number": 2,
+   "vote_average": 8.1
+  }
+ ],
+ "last_episode_to_air": {
+  "id": 6745012,
+  "name": "Blood and Bone",
+  "overview": "Easter Sunday. 2PM. Live on @VoughtNews. Bear witness as Homelander reboots the universe.",
+  "vote_average": 5.864,
+  "vote_count": 121,
+  "air_date": "2026-05-20",
+  "episode_number": 8,
+  "episode_type": "finale",
+  "production_code": "",
+  "runtime": 67,
+  "season_number": 5,
+  "show_id": 76479,
+  "still_path": "/ezEbcxPgVMPRFYxRsWkokdLRUFK.jpg"
+ },
+ "next_episode_to_air": null
+}
