@@ -32,8 +32,8 @@ Instantiate `Settings()` inside functions, never at import time.
 |---|---|
 | `LIFE_HUB_URL` | Base URL of the life-data hub API |
 | `LIFE_HUB_TOKEN` | Bearer token, scoped `tables:read,tables:write` on the tables below (a write-only token cannot pull) |
-| `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) |
-| `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) |
+| `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) - account-level key, shared with the derivations project since TMDB issues only one v3 key per account |
+| `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) - this project's own dedicated key, minted for media-center |
 
 ## Module map
 
@@ -42,7 +42,7 @@ Instantiate `Settings()` inside functions, never at import time.
 | `core/config.py` | `Settings` - the four env vars above |
 | `core/hub.py` | `HubClient` (`pull`/`push` against the life-data hub), `imported_from` (provenance edge), `now_iso` |
 | `core/tmdb.py` | TMDB show/season lookups -> `tv_episodes` rows |
-| `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows |
+| `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows; the row normalizers (`parse_iso8601_duration`, `to_hub_datetime`, `is_short`, `thumbnail_url`) come from the shared `media_fields` package, never a local copy |
 | `core/feeds.py` | RSS parsing + generic link scraping -> `articles` rows |
 | `core/watcher.py` | `Entry` + `parse_feed` (feedparser wrapper), shared by `feeds.py` |
 | `core/pipeline.py` | `sync_tv`, `sync_youtube`, `sync_feeds`, `run_daily` - wires the above into one ingestion pass |
@@ -61,8 +61,8 @@ Instantiate `Settings()` inside functions, never at import time.
 - A `feeds` row with `fetch = "x"` is skipped - X/Twitter scraping is a
   separate mac-mini job, not this poller's job.
 - It never sends notifications.
-- Datetimes pushed to the hub are millisecond ISO-8601 (`to_hub_datetime` in
-  `core/youtube.py`), and a rejected row (the hub's `push` `rejected` list)
+- Datetimes pushed to the hub are millisecond ISO-8601 (`to_hub_datetime`
+  from `media_fields`), and a rejected row (the hub's `push` `rejected` list)
   is counted, logged and never marked as ingested.
 
 ## Commands

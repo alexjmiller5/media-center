@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "feedparser>=6.0.12",
     "httpx>=0.28",
+    "media-fields",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
     "structlog>=25.1",
@@ -26,3 +27,6 @@ testpaths = ["tests"]
 [tool.ruff]
 src = ["src", "tests"]
 line-length = 100
+
+[tool.uv.sources]
+media-fields = { git = "https://github.com/alexjmiller5/media-fields", rev = "v0.1.0" }
