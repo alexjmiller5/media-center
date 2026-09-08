@@ -1,64 +1,53 @@
 # media-center
 
-Headless pollers that watch media sources — RSS blogs, tech changelogs, later
-Trakt (TV) and YouTube — and push updates into Notion. Notion is the UI; this
-service has no frontend. Runs on [Modal](https://modal.com) (webhook +
-background workers + cron).
+A daily poller that ingests TV episodes (TMDB), YouTube uploads (YouTube
+Data API) and blog/feed articles (RSS + generic link scraping) into a
+life-data hub. No frontend — the hub (and whatever reads it) is the UI.
+Runs on [Modal](https://modal.com) as a single daily cron job.
 
 ## Layout
 
 ```
-app.py            Modal shim — image, secrets, endpoints, schedules
+app.py            Modal shim — image, secrets, cron schedule
 src/core/         business logic (plain Python, portable)
 tests/            pytest
 .env.tpl          secrets manifest (1Password op:// refs, committed)
-justfile          dev / test / sync-secrets / deploy
+justfile          test / check / fmt / logs / sync-secrets / deploy / run
 ```
 
 ## Commands
 
-`just dev` / `just test` / `just check` / `just fmt` / `just logs` /
-`just sync-secrets` / `just deploy` — see CLAUDE.md.
+`just test` / `just check` / `just fmt` / `just logs` / `just sync-secrets` /
+`just deploy` / `just run` — see AGENTS.md.
 
 ## Manual setup
 
-Run these once from a desktop-authenticated `op` terminal (a CI service
-account cannot create vaults):
-
 ```bash
-# 1. Project vault + read-only CI service account
-op vault create "Media Center"
-OUT=$(op service-account create "media-center-ci" --vault "Media Center:read_items" --format json </dev/null)
-op item create --category "API Credential" --title "Media Center CI op Service Account Token" --vault "<your vault>" "token[concealed]=$(echo "$OUT" | jq -r .token)" </dev/null
-
-# 2. Credentials the app consumes (items referenced by .env.tpl / deploy.yml)
-op item create --category "API Credential" --title "Media Center Notion API Key" --vault Media Center \
-    "credential[concealed]=<your Notion integration secret>" \
-    "source dbs[text]=<comma-separated data_source IDs of your source DBs>"
-op item create --category "API Credential" --title "Media Center CI Modal Token" --vault Media Center "token-id[concealed]=<id>" "token-secret[concealed]=<secret>"
-
-# 3. CI bootstrap (the single GH secret)
-gh secret set OP_SERVICE_ACCOUNT_TOKEN --repo <owner>/<repo> --body "$(op read 'op://<your vault>/Media Center CI op Service Account Token/token')"
+op-project-bootstrap .env.tpl --repo <owner>/<repo>
 ```
+
+Then mint a hub token scoped `tables:write` on `tv_episodes`,
+`youtube_videos`, `articles` and `provenance` (and read access on
+`tv_shows`, `youtube_channels`, `feeds`), and put it in the
+`LIFE_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
+`LIFE_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`.
 
 Other one-time steps that cannot be codified:
 
 - `uv run modal token new` — authenticate this machine with Modal
-- Mint a Proxy Auth Token in the Modal dashboard for HTTP callers
 
-## Bring your own Notion
+## Bring your own hub
 
-Create one or more Notion databases to act as source DBs and list their
-`data_source_id`s (comma-separated) in the `SOURCE_DBS` env var. Each source
-DB needs these properties (exact names):
+This service is agnostic to which life-data hub it talks to — any endpoint
+implementing `/v1/rows/pull` and `/v1/rows/push` (see `src/core/hub.py`)
+works, as long as it has these tables:
 
-| Property | Type | Used for |
-|---|---|---|
-| `Name` | title | source name / created entry title |
-| `Site URL` | url | dedup key for created entries |
-| `Feed URL` | url | the RSS/Atom feed to poll |
-| `Status` | select | only rows with `Tracked` are polled |
-| `Last Checked` | date | poll cursor, advanced by the service |
-
-New entries are written back into the same DB the source row came from, so
-target and source share this schema.
+| Table | Role |
+|---|---|
+| `tv_shows` | source list — rows this service reads to know which shows to poll |
+| `tv_episodes` | written — TMDB episode rows |
+| `youtube_channels` | source list — channels to poll, tracks per-channel backfill state |
+| `youtube_videos` | written — uploaded video rows |
+| `feeds` | source list — RSS/scrape sources; `fetch = "x"` rows are skipped |
+| `articles` | written — feed/scrape article rows |
+| `provenance` | written — one row per created item, linking it back to its source |

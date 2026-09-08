@@ -3,10 +3,6 @@ set shell := ["bash", "-cu"]
 default:
     @just --list
 
-# Dev: live-reloading deploy of app.py against real Modal infra
-dev:
-    uv run modal serve app.py
-
 test:
     uv run pytest
 
@@ -30,3 +26,7 @@ deploy: test sync-secrets
     uv run modal deploy app.py
 
 # --- project-specific recipes below (one-offs live in scripts/, run directly) ---
+
+# One ingestion run on Modal, now (uses the deployed secret)
+run:
+    uv run modal run app.py
