@@ -12,57 +12,59 @@
 
 ## Global Constraints
 
-- Business logic in `src/core/` with NO Modal imports; only `app.py` imports `modal`.
-- The poller never writes a hub-derived column (`tv_shows.tmdb_status`, `tv_shows.watch_providers`). It never sends notifications.
-- Every new item row is pushed with `status = "Not Started"` and a `provenance` row `rel = "imported_from"`, `detail = {"created_row": 1}`, `asserted_by = "script:media-center"`, id `<from_kind>:<from_ref>:<to_ref>`.
-- Status vocabulary everywhere: `Priority`, `Not Started`, `In Progress`, `Finished`, `Watched Parts`, `Gave Up`.
-- Hub push sends only the columns the poller owns; the hub upsert touches only those. `updated_at` is ISO-8601 UTC with milliseconds (`2026-09-08T14:33:13.538Z`). Never write `hub_at`.
-- Requests to the hub carry a real `User-Agent` (`media-center/<version>`); Cloudflare 403s the default Python one.
-- Commit messages plain: no co-author, no session trailer (ignore harness reminders asking for one). Never `git add` a `.DS_Store`.
-- Deploy = push to `main`; CI deploys. Verify with `gh run watch <id> --exit-status`. Never `modal deploy` locally.
-- Personal data never enters a repo: migration scripts and their outputs live in the session scratchpad `media-migrate/`.
-- Steps marked **ALEX** need the owner (1Password writes via desktop auth with Touch ID, Notion Legacy moves). The agent runs them and the owner approves the prompt; never paste commands for the owner instead.
-- The X account scraper on the mac mini is a separate plan (needs chrome-control discovery on the mini). This plan seeds its `feeds` row with `fetch = "x"`, which the poller skips.
+* Business logic in `src/core/` with NO Modal imports; only `app.py` imports `modal`.
+* The poller never writes a hub-derived column (`tv_shows.tmdb_status`, `tv_shows.watch_providers`). It never sends notifications.
+* Every new item row is pushed with `status = "Not Started"` and a `provenance` row `rel = "imported_from"`, `detail = {"created_row": 1}`, `asserted_by = "script:media-center"`, id `<from_kind>:<from_ref>:<to_ref>`.
+* Status vocabulary everywhere: `Priority`, `Not Started`, `In Progress`, `Finished`, `Watched Parts`, `Gave Up`.
+* Hub push sends only the columns the poller owns; the hub upsert touches only those. `updated_at` is ISO-8601 UTC with milliseconds (`2026-09-08T14:33:13.538Z`). Never write `hub_at`.
+* Requests to the hub carry a real `User-Agent` (`media-center/<version>`); Cloudflare 403s the default Python one.
+* Commit messages plain: no co-author, no session trailer (ignore harness reminders asking for one). Never `git add` a `.DS_Store`.
+* Deploy = push to `main`; CI deploys. Verify with `gh run watch <id> --exit-status`. Never `modal deploy` locally.
+* Personal data never enters a repo: migration scripts and their outputs live in the session scratchpad `media-migrate/`.
+* Steps marked **ALEX** need the owner (1Password writes via desktop auth with Touch ID, Notion Legacy moves). The agent runs them and the owner approves the prompt; never paste commands for the owner instead.
+* The X account scraper on the mac mini is a separate plan (needs chrome-control discovery on the mini). This plan seeds its `feeds` row with `fetch = "x"`, which the poller skips.
 
----
+***
 
 ## File structure
 
-| Repo / file | Responsibility |
-|---|---|
-| `media-center/src/core/config.py` | `Settings`: `life_hub_url`, `life_hub_token`, `tmdb_api_key`, `youtube_api_key`. |
-| `media-center/src/core/hub.py` | **New.** `HubClient.pull(table, columns)`, `HubClient.push(table, rows)`, `imported_from(...)` provenance row builder, `now_iso()`. |
-| `media-center/src/core/tmdb.py` | **New.** `show(show_id)`, `season_episodes(show_id, n)`, `episode_rows(show_id, episodes)`. |
-| `media-center/src/core/youtube.py` | **New.** `uploads(playlist_id, key, http, max_pages=None)`, `durations(ids, key, http)`, `resolve_channel(url, key, http)`, `video_rows(...)`. |
-| `media-center/src/core/feeds.py` | **New.** `canonical_url(url)`, `entries(feed_row, http)`, `scrape_links(html, base_url, pattern)`. |
-| `media-center/src/core/watcher.py` | Keep `Entry`, `parse_feed`. Delete `Source`, `new_entries`, `route`. |
-| `media-center/src/core/pipeline.py` | Rewrite: `run_daily(hub, http, settings)` -> `sync_tv`, `sync_youtube`, `sync_feeds`. |
-| `media-center/src/core/notion.py` | **Delete** (and `tests/test_notion.py`). |
-| `media-center/app.py` | Cron `daily` only (timeout 3600); `main()` local run. Webhook and `process` deleted. |
-| `media-center/.env.tpl`, `justfile`, `AGENTS.md`, `README.md` | New env vars; docs describe the current state. |
-| `media-center/tests/fixtures/` | `tmdb_tv.json`, `tmdb_season.json`, `playlist_items.json`, `videos_list.json`, `links_page.html`, keep `rss2.xml`, `github_releases.atom`. |
-| `derivations/src/core/tmdb.py`, `tests/` | `tv` returns `tmdb_status`, `watch_providers`. |
-| life-data catalog (user op, no repo change) | Tables, columns, options, view, `provenance.from_kind` options. |
-| `agent-config/skills/life-map/SKILL.md` | New table contracts, media feed query, ID registry rows. |
-| `synapse/src/core/handlers.py`, `databases.yaml`, `tests/test_handlers.py` | YouTube capture writes to life-data. |
-| scratchpad `media-migrate/` | `channels.py`, `videos.py`, `articles.py`, `episodes.py`, `seed_feeds.py`; never committed. |
+| Repo / file                                                                | Responsibility                                                                                                                                 |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `media-center/src/core/config.py`                                          | `Settings`: `life_hub_url`, `life_hub_token`, `tmdb_api_key`, `youtube_api_key`.                                                               |
+| `media-center/src/core/hub.py`                                             | **New.** `HubClient.pull(table, columns)`, `HubClient.push(table, rows)`, `imported_from(...)` provenance row builder, `now_iso()`.            |
+| `media-center/src/core/tmdb.py`                                            | **New.** `show(show_id)`, `season_episodes(show_id, n)`, `episode_rows(show_id, episodes)`.                                                    |
+| `media-center/src/core/youtube.py`                                         | **New.** `uploads(playlist_id, key, http, max_pages=None)`, `durations(ids, key, http)`, `resolve_channel(url, key, http)`, `video_rows(...)`. |
+| `media-center/src/core/feeds.py`                                           | **New.** `canonical_url(url)`, `entries(feed_row, http)`, `scrape_links(html, base_url, pattern)`.                                             |
+| `media-center/src/core/watcher.py`                                         | Keep `Entry`, `parse_feed`. Delete `Source`, `new_entries`, `route`.                                                                           |
+| `media-center/src/core/pipeline.py`                                        | Rewrite: `run_daily(hub, http, settings)` -> `sync_tv`, `sync_youtube`, `sync_feeds`.                                                          |
+| `media-center/src/core/notion.py`                                          | **Delete** (and `tests/test_notion.py`).                                                                                                       |
+| `media-center/app.py`                                                      | Cron `daily` only (timeout 3600); `main()` local run. Webhook and `process` deleted.                                                           |
+| `media-center/.env.tpl`, `justfile`, `AGENTS.md`, `README.md`              | New env vars; docs describe the current state.                                                                                                 |
+| `media-center/tests/fixtures/`                                             | `tmdb_tv.json`, `tmdb_season.json`, `playlist_items.json`, `videos_list.json`, `links_page.html`, keep `rss2.xml`, `github_releases.atom`.     |
+| `derivations/src/core/tmdb.py`, `tests/`                                   | `tv` returns `tmdb_status`, `watch_providers`.                                                                                                 |
+| life-data catalog (user op, no repo change)                                | Tables, columns, options, view, `provenance.from_kind` options.                                                                                |
+| `agent-config/skills/life-map/SKILL.md`                                    | New table contracts, media feed query, ID registry rows.                                                                                       |
+| `synapse/src/core/handlers.py`, `databases.yaml`, `tests/test_handlers.py` | YouTube capture writes to life-data.                                                                                                           |
+| scratchpad `media-migrate/`                                                | `channels.py`, `videos.py`, `articles.py`, `episodes.py`, `seed_feeds.py`; never committed.                                                    |
 
----
+***
 
 ### Task 1: Settings and repo pruning
 
 **Files:**
-- Modify: `src/core/config.py`, `.env.tpl`, `tests/test_config.py`
-- Delete: `src/core/notion.py`, `tests/test_notion.py`
+
+* Modify: `src/core/config.py`, `.env.tpl`, `tests/test_config.py`
+* Delete: `src/core/notion.py`, `tests/test_notion.py`
 
 **Interfaces:**
-- Produces: `Settings` with fields `life_hub_url: str`, `life_hub_token: str`, `tmdb_api_key: str`, `youtube_api_key: str` (env `LIFE_HUB_URL`, `LIFE_HUB_TOKEN`, `TMDB_API_KEY`, `YOUTUBE_API_KEY`).
 
-- [ ] **Step 1: Replace the config test**
+* Produces: `Settings` with fields `life_hub_url: str`, `life_hub_token: str`, `tmdb_api_key: str`, `youtube_api_key: str` (env `LIFE_HUB_URL`, `LIFE_HUB_TOKEN`, `TMDB_API_KEY`, `YOUTUBE_API_KEY`).
+
+* [ ] **Step 1: Replace the config test**
 
 `tests/test_config.py`:
 
-```python
+```Python
 from core.config import Settings
 
 
@@ -78,11 +80,11 @@ def test_settings_read_the_four_env_vars(monkeypatch):
     assert s.youtube_api_key == "yt"
 ```
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_config.py -v` -> FAIL (`Settings` has no `life_hub_url`).
+* [ ] **Step 2: Run** `uv run pytest tests/test_config.py -v` -> FAIL (`Settings` has no `life_hub_url`).
 
-- [ ] **Step 3: Rewrite `src/core/config.py`**
+* [ ] **Step 3: Rewrite** **`src/core/config.py`**
 
-```python
+```Python
 """Settings from env vars - Modal Secret in the cloud, `op run` locally.
 
 Instantiate Settings() inside functions, never at import time.
@@ -98,7 +100,7 @@ class Settings(BaseSettings):
     youtube_api_key: str
 ```
 
-- [ ] **Step 4: Rewrite `.env.tpl`** (names, not ids: this file is the bootstrap manifest)
+* [ ] **Step 4: Rewrite** **`.env.tpl`** (names, not ids: this file is the bootstrap manifest)
 
 ```
 # Canonical secrets manifest - 1Password secret references only, SAFE to commit.
@@ -111,26 +113,28 @@ TMDB_API_KEY=op://Media Center/Media Center ENV/TMDB_API_KEY
 YOUTUBE_API_KEY=op://Media Center/Media Center ENV/YOUTUBE_API_KEY
 ```
 
-- [ ] **Step 5: Delete the Notion client** `git rm src/core/notion.py tests/test_notion.py`. `tests/test_pipeline.py` and `tests/test_watcher.py` will break; they are rewritten in Tasks 5 and 6. For now run `uv run pytest tests/test_config.py -v` -> PASS.
+* [ ] **Step 5: Delete the Notion client** `git rm src/core/notion.py tests/test_notion.py`. `tests/test_pipeline.py` and `tests/test_watcher.py` will break; they are rewritten in Tasks 5 and 6. For now run `uv run pytest tests/test_config.py -v` -> PASS.
 
-- [ ] **Step 6: Commit** `git add -A && git commit -m "Settings for the life-data hub, TMDB and YouTube; drop the Notion client"`
+* [ ] **Step 6: Commit** `git add -A && git commit -m "Settings for the life-data hub, TMDB and YouTube; drop the Notion client"`
 
----
+***
 
 ### Task 2: Hub client
 
 **Files:**
-- Create: `src/core/hub.py`, `tests/test_hub.py`
+
+* Create: `src/core/hub.py`, `tests/test_hub.py`
 
 **Interfaces:**
-- Produces:
-  - `now_iso() -> str` ISO-8601 UTC with milliseconds and `Z`.
-  - `class HubClient(url: str, token: str, http: httpx.Client | None = None)` with `pull(table: str, columns: list[str]) -> list[dict]` (drops rows whose `deleted_at` is set; always requests `deleted_at`), `push(table: str, rows: list[dict]) -> dict` (`{"upserted": n, "rejected": [...]}`; raises `httpx.HTTPStatusError` on non-2xx; returns `{"upserted": 0, "rejected": []}` without a request when `rows` is empty).
-  - `imported_from(from_kind: str, from_ref: str, to_kind: str, to_ref: str) -> dict` provenance row.
 
-- [ ] **Step 1: Write the failing tests**
+* Produces:
+  * `now_iso() -> str` ISO-8601 UTC with milliseconds and `Z`.
+  * `class HubClient(url: str, token: str, http: httpx.Client | None = None)` with `pull(table: str, columns: list[str]) -> list[dict]` (drops rows whose `deleted_at` is set; always requests `deleted_at`), `push(table: str, rows: list[dict]) -> dict` (`{"upserted": n, "rejected": [...]}`; raises `httpx.HTTPStatusError` on non-2xx; returns `{"upserted": 0, "rejected": []}` without a request when `rows` is empty).
+  * `imported_from(from_kind: str, from_ref: str, to_kind: str, to_ref: str) -> dict` provenance row.
 
-```python
+* [ ] **Step 1: Write the failing tests**
+
+```Python
 import json
 
 import httpx
@@ -206,11 +210,11 @@ def test_imported_from_row_shape():
     assert row["updated_at"].endswith("Z")
 ```
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_hub.py -v` -> FAIL (no module `core.hub`).
+* [ ] **Step 2: Run** `uv run pytest tests/test_hub.py -v` -> FAIL (no module `core.hub`).
 
-- [ ] **Step 3: Implement `src/core/hub.py`**
+* [ ] **Step 3: Implement** **`src/core/hub.py`**
 
-```python
+```Python
 """life-data hub client - the one place media-center reads and writes rows.
 
 Pull whole tables (`/v1/rows/pull`), push only the columns we own
@@ -279,27 +283,29 @@ def imported_from(from_kind: str, from_ref: str, to_kind: str, to_ref: str) -> d
     }
 ```
 
-- [ ] **Step 4: Run** `uv run pytest tests/test_hub.py -v` -> PASS.
+* [ ] **Step 4: Run** `uv run pytest tests/test_hub.py -v` -> PASS.
 
-- [ ] **Step 5: Commit** `git add src/core/hub.py tests/test_hub.py && git commit -m "Hub client: pull tables, push owned columns, imported_from edges"`
+* [ ] **Step 5: Commit** `git add src/core/hub.py tests/test_hub.py && git commit -m "Hub client: pull tables, push owned columns, imported_from edges"`
 
----
+***
 
 ### Task 3: TMDB episodes
 
 **Files:**
-- Create: `src/core/tmdb.py`, `tests/test_tmdb.py`, `tests/fixtures/tmdb_tv.json`, `tests/fixtures/tmdb_season.json`
+
+* Create: `src/core/tmdb.py`, `tests/test_tmdb.py`, `tests/fixtures/tmdb_tv.json`, `tests/fixtures/tmdb_season.json`
 
 **Interfaces:**
-- Produces:
-  - `show(show_id: str, key: str, http: httpx.Client) -> dict` (raw `/tv/{id}` JSON).
-  - `season_numbers(show_json: dict) -> list[int]` (every season number including 0 specials).
-  - `season_episodes(show_id: str, n: int, key: str, http: httpx.Client) -> list[dict]` (raw `episodes` list).
-  - `episode_rows(show_id: str, episodes: list[dict]) -> list[dict]` rows `{id, show_id, season, episode, title, air_date, runtime_min, status, updated_at}` with `id = str(episode["id"])`, `status = "Not Started"`.
 
-- [ ] **Step 1: Record fixtures** (TMDB responses carry no personal data). Key via desktop auth, value never printed:
+* Produces:
+  * `show(show_id: str, key: str, http: httpx.Client) -> dict` (raw `/tv/{id}` JSON).
+  * `season_numbers(show_json: dict) -> list[int]` (every season number including 0 specials).
+  * `season_episodes(show_id: str, n: int, key: str, http: httpx.Client) -> list[dict]` (raw `episodes` list).
+  * `episode_rows(show_id: str, episodes: list[dict]) -> list[dict]` rows `{id, show_id, season, episode, title, air_date, runtime_min, status, updated_at}` with `id = str(episode["id"])`, `status = "Not Started"`.
 
-```bash
+* [ ] **Step 1: Record fixtures** (TMDB responses carry no personal data). Key via desktop auth, value never printed:
+
+```Shell
 mkdir -p tests/fixtures && K=$(zsh -ic 'op-personal read "op://Derivations/Derivations ENV/TMDB_API_KEY"' 2>/dev/null | tail -1)
 curl -s "https://api.themoviedb.org/3/tv/76479?api_key=$K" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["seasons"]=d["seasons"][:3]; print(json.dumps({k:d[k] for k in ("id","name","status","seasons","last_episode_to_air","next_episode_to_air")}, indent=1))' > tests/fixtures/tmdb_tv.json
 curl -s "https://api.themoviedb.org/3/tv/76479/season/1?api_key=$K" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["episodes"]=[{k:e.get(k) for k in ("id","name","air_date","runtime","episode_number","season_number")} for e in d["episodes"][:3]]; print(json.dumps(d, indent=1))' > tests/fixtures/tmdb_season.json
@@ -307,9 +313,9 @@ curl -s "https://api.themoviedb.org/3/tv/76479/season/1?api_key=$K" | python3 -c
 
 (76479 = The Boys.) Confirm `tests/fixtures/tmdb_tv.json` has `"status": "Returning Series"` or `"Ended"` and 3 seasons; `tmdb_season.json` has 3 episodes with integer `id`.
 
-- [ ] **Step 2: Write the failing tests**
+* [ ] **Step 2: Write the failing tests**
 
-```python
+```Python
 import json
 from pathlib import Path
 
@@ -364,11 +370,11 @@ def test_episode_rows_shape():
     assert rows[0]["updated_at"].endswith("Z")
 ```
 
-- [ ] **Step 3: Run** `uv run pytest tests/test_tmdb.py -v` -> FAIL.
+* [ ] **Step 3: Run** `uv run pytest tests/test_tmdb.py -v` -> FAIL.
 
-- [ ] **Step 4: Implement `src/core/tmdb.py`**
+* [ ] **Step 4: Implement** **`src/core/tmdb.py`**
 
-```python
+```Python
 """TMDB season listings for tv_episodes rows. Plain Python, no Modal."""
 
 import httpx
@@ -412,34 +418,36 @@ def episode_rows(show_id: str, episodes: list[dict]) -> list[dict]:
     ]
 ```
 
-- [ ] **Step 5: Run** `uv run pytest tests/test_tmdb.py -v` -> PASS.
+* [ ] **Step 5: Run** `uv run pytest tests/test_tmdb.py -v` -> PASS.
 
-- [ ] **Step 6: Commit** `git add src/core/tmdb.py tests/test_tmdb.py tests/fixtures/tmdb_*.json && git commit -m "TMDB season listings to tv_episodes rows"`
+* [ ] **Step 6: Commit** `git add src/core/tmdb.py tests/test_tmdb.py tests/fixtures/tmdb_*.json && git commit -m "TMDB season listings to tv_episodes rows"`
 
----
+***
 
 ### Task 4: YouTube channels and videos
 
 **Files:**
-- Create: `src/core/youtube.py`, `tests/test_youtube.py`, `tests/fixtures/playlist_items.json`, `tests/fixtures/videos_list.json`
+
+* Create: `src/core/youtube.py`, `tests/test_youtube.py`, `tests/fixtures/playlist_items.json`, `tests/fixtures/videos_list.json`
 
 **Interfaces:**
-- Produces:
-  - `uploads(playlist_id: str, key: str, http, max_pages: int | None = None) -> list[dict]` `{id, title, published_at}` per video in the uploads playlist (newest first), following `nextPageToken` until exhausted or `max_pages` pages. `max_pages=1` is the daily delta (50 newest, 1 quota unit); `None` is the back catalog. YouTube's per-channel RSS is NOT used: it 404s for some channels (Fireship, verified 2026-09-08) while the Data API serves them.
-  - `durations(video_ids: list[str], key: str, http) -> dict[str, int]` seconds via `videos.list part=contentDetails`, batches of 50.
-  - `resolve_channel(url: str, key: str, http) -> dict | None` `{id, title, handle, uploads_playlist_id}` for `/channel/UC..`, `/@handle`, `/c/name`, `/user/name`, bare `youtube.com/name` URLs.
-  - `video_rows(channel_id: str, videos: list[dict], durations: dict[str, int]) -> list[dict]` rows `{id, channel_id, title, published_at, duration_s, thumbnail_url, is_short, status, updated_at}`; `is_short = duration_s is not None and duration_s <= 180`; `thumbnail_url = https://i.ytimg.com/vi/<id>/hqdefault.jpg`.
-  - `parse_iso8601_duration("PT1H2M3S") -> 3723`.
 
-- [ ] **Step 1: Record fixtures**
+* Produces:
+  * `uploads(playlist_id: str, key: str, http, max_pages: int | None = None) -> list[dict]` `{id, title, published_at}` per video in the uploads playlist (newest first), following `nextPageToken` until exhausted or `max_pages` pages. `max_pages=1` is the daily delta (50 newest, 1 quota unit); `None` is the back catalog. YouTube's per-channel RSS is NOT used: it 404s for some channels (Fireship, verified 2026-09-08) while the Data API serves them.
+  * `durations(video_ids: list[str], key: str, http) -> dict[str, int]` seconds via `videos.list part=contentDetails`, batches of 50.
+  * `resolve_channel(url: str, key: str, http) -> dict | None` `{id, title, handle, uploads_playlist_id}` for `/channel/UC..`, `/@handle`, `/c/name`, `/user/name`, bare `youtube.com/name` URLs.
+  * `video_rows(channel_id: str, videos: list[dict], durations: dict[str, int]) -> list[dict]` rows `{id, channel_id, title, published_at, duration_s, thumbnail_url, is_short, status, updated_at}`; `is_short = duration_s is not None and duration_s <= 180`; `thumbnail_url = https://i.ytimg.com/vi/<id>/hqdefault.jpg`.
+  * `parse_iso8601_duration("PT1H2M3S") -> 3723`.
 
-```bash
+* [ ] **Step 1: Record fixtures**
+
+```Shell
 K=$(op read "op://4eeyrkqibibn7k4j6rz2fbzvxm/$(op item list --vault 4eeyrkqibibn7k4j6rz2fbzvxm --format json | jq -r '.[] | select(.title | test("YouTube"; "i")) | .id' | head -1)/credential" 2>/dev/null)
 ```
 
 If no YouTube key item exists in the AI Agent vault, read Synapse's via desktop auth: `K=$(zsh -ic 'op-personal read "op://Synapse/Synapse ENV/GOOGLE_YOUTUBE_API_KEY"' | tail -1)`. Then:
 
-```bash
+```Shell
 curl -s "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=3&playlistId=UUHnyfMqiRRG1u-2MsSQLbXA&key=$K" > tests/fixtures/playlist_items.json
 IDS=$(python3 -c 'import json; print(",".join(i["snippet"]["resourceId"]["videoId"] for i in json.load(open("tests/fixtures/playlist_items.json"))["items"]))')
 curl -s "https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=$IDS&key=$K" > tests/fixtures/videos_list.json
@@ -447,9 +455,9 @@ curl -s "https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=$ID
 
 Check `playlist_items.json` has `nextPageToken` and 3 items; `videos_list.json` items carry `contentDetails.duration`.
 
-- [ ] **Step 2: Write the failing tests**
+* [ ] **Step 2: Write the failing tests**
 
-```python
+```Python
 import json
 from pathlib import Path
 
@@ -559,11 +567,11 @@ def test_video_rows_shape_and_short_flag():
     assert youtube.video_rows("UC1", [{"id": "x", "title": "T", "published_at": None}], {})[0]["is_short"] == 0
 ```
 
-- [ ] **Step 3: Run** `uv run pytest tests/test_youtube.py -v` -> FAIL.
+* [ ] **Step 3: Run** `uv run pytest tests/test_youtube.py -v` -> FAIL.
 
-- [ ] **Step 4: Implement `src/core/youtube.py`**
+* [ ] **Step 4: Implement** **`src/core/youtube.py`**
 
-```python
+```Python
 """YouTube channels and videos through the Data API: the uploads playlist
 (first page = daily delta, all pages = back catalog), durations and channel
 resolution. No Modal imports. Per-channel RSS is deliberately not used: it
@@ -665,29 +673,32 @@ def video_rows(channel_id: str, videos: list[dict], durations: dict[str, int]) -
     return rows
 ```
 
-- [ ] **Step 5: Run** `uv run pytest tests/test_youtube.py -v` -> PASS.
+* [ ] **Step 5: Run** `uv run pytest tests/test_youtube.py -v` -> PASS.
 
-- [ ] **Step 6: Commit** `git add src/core/youtube.py tests/test_youtube.py tests/fixtures/playlist_items.json tests/fixtures/videos_list.json && git commit -m "YouTube: uploads playlist delta and back catalog, durations, channel resolution"`
+* [ ] **Step 6: Commit** `git add src/core/youtube.py tests/test_youtube.py tests/fixtures/playlist_items.json tests/fixtures/videos_list.json && git commit -m "YouTube: uploads playlist delta and back catalog, durations, channel resolution"`
 
----
+***
 
 ### Task 5: Feeds and the link scraper
 
 **Files:**
-- Create: `src/core/feeds.py`, `tests/test_feeds.py`, `tests/fixtures/links_page.html`
-- Modify: `src/core/watcher.py` (keep `Entry`, `parse_feed`; delete `Source`, `new_entries`, `route`), `tests/test_watcher.py` (drop the `new_entries`/`route` tests). feedparser stays a dependency for RSS feeds only.
+
+* Create: `src/core/feeds.py`, `tests/test_feeds.py`, `tests/fixtures/links_page.html`
+* Modify: `src/core/watcher.py` (keep `Entry`, `parse_feed`; delete `Source`, `new_entries`, `route`), `tests/test_watcher.py` (drop the `new_entries`/`route` tests). feedparser stays a dependency for RSS feeds only.
 
 **Interfaces:**
-- Consumes: `watcher.parse_feed(text) -> list[Entry]` (`Entry(guid, title, url, published)`).
-- Produces:
-  - `canonical_url(url: str) -> str`: lowercase scheme+host, drop fragment, drop query params starting with `utm_` and the params `si`, `ref`, `fbclid`, `gclid`, keep the rest sorted, strip a trailing `/` on paths longer than `/`.
-  - `scrape_links(html: str, base_url: str, pattern: str) -> list[Entry]`: every `<a href>` whose absolute href matches `pattern` (regex `search`), `title` = link text stripped, `guid = url`, `published = None`, deduplicated by url in document order.
-  - `entries(feed_row: dict, http) -> list[Entry]`: `fetch == "rss"` -> GET `feed_row["id"]` and `parse_feed`; `fetch == "scrape:links"` -> GET and `scrape_links(text, id, feed_row["scrape_pattern"])`; `fetch == "x"` -> `[]`.
-  - `article_rows(feed_id: str, items: list[Entry]) -> list[dict]` rows `{id: canonical_url(url), feed_id, title, published_at, status: "Not Started", updated_at}`.
 
-- [ ] **Step 1: Write the fixture** `tests/fixtures/links_page.html`
+* Consumes: `watcher.parse_feed(text) -> list[Entry]` (`Entry(guid, title, url, published)`).
 
-```html
+* Produces:
+  * `canonical_url(url: str) -> str`: lowercase scheme+host, drop fragment, drop query params starting with `utm_` and the params `si`, `ref`, `fbclid`, `gclid`, keep the rest sorted, strip a trailing `/` on paths longer than `/`.
+  * `scrape_links(html: str, base_url: str, pattern: str) -> list[Entry]`: every `<a href>` whose absolute href matches `pattern` (regex `search`), `title` = link text stripped, `guid = url`, `published = None`, deduplicated by url in document order.
+  * `entries(feed_row: dict, http) -> list[Entry]`: `fetch == "rss"` -> GET `feed_row["id"]` and `parse_feed`; `fetch == "scrape:links"` -> GET and `scrape_links(text, id, feed_row["scrape_pattern"])`; `fetch == "x"` -> `[]`.
+  * `article_rows(feed_id: str, items: list[Entry]) -> list[dict]` rows `{id: canonical_url(url), feed_id, title, published_at, status: "Not Started", updated_at}`.
+
+* [ ] **Step 1: Write the fixture** `tests/fixtures/links_page.html`
+
+```HTML
 <html><body>
 <nav><a href="/">Home</a><a href="/changelog">Changelog</a></nav>
 <main>
@@ -698,9 +709,9 @@ def video_rows(channel_id: str, videos: list[dict], durations: dict[str, int]) -
 </main></body></html>
 ```
 
-- [ ] **Step 2: Write the failing tests**
+* [ ] **Step 2: Write the failing tests**
 
-```python
+```Python
 from pathlib import Path
 
 import httpx
@@ -750,11 +761,11 @@ def test_article_rows_use_canonical_url_as_id():
     assert rows[0]["status"] == "Not Started" and rows[0]["updated_at"].endswith("Z")
 ```
 
-- [ ] **Step 3: Run** `uv run pytest tests/test_feeds.py -v` -> FAIL.
+* [ ] **Step 3: Run** `uv run pytest tests/test_feeds.py -v` -> FAIL.
 
-- [ ] **Step 4: Implement `src/core/feeds.py`**
+* [ ] **Step 4: Implement** **`src/core/feeds.py`**
 
-```python
+```Python
 """RSS feeds and no-feed pages -> article rows. No Modal imports."""
 
 import re
@@ -841,26 +852,29 @@ def article_rows(feed_id: str, items: list[Entry]) -> list[dict]:
     ]
 ```
 
-- [ ] **Step 5: Trim `src/core/watcher.py`** to `Entry` + `parse_feed` (delete `Source`, `new_entries`, `route` and the `dataclass Source` block). In `tests/test_watcher.py` delete every test that references `new_entries`, `route` or `Source`; keep the `parse_feed` tests.
+* [ ] **Step 5: Trim** **`src/core/watcher.py`** to `Entry` + `parse_feed` (delete `Source`, `new_entries`, `route` and the `dataclass Source` block). In `tests/test_watcher.py` delete every test that references `new_entries`, `route` or `Source`; keep the `parse_feed` tests.
 
-- [ ] **Step 6: Run** `uv run pytest tests/test_feeds.py tests/test_watcher.py -v` -> PASS.
+* [ ] **Step 6: Run** `uv run pytest tests/test_feeds.py tests/test_watcher.py -v` -> PASS.
 
-- [ ] **Step 7: Commit** `git add -A && git commit -m "Feeds: canonical URLs, generic link scraper, article rows; trim watcher"`
+* [ ] **Step 7: Commit** `git add -A && git commit -m "Feeds: canonical URLs, generic link scraper, article rows; trim watcher"`
 
----
+***
 
 ### Task 6: Daily pipeline, cron shim, docs
 
 **Files:**
-- Rewrite: `src/core/pipeline.py`, `tests/test_pipeline.py`, `app.py`, `AGENTS.md`, `README.md`, `justfile` (remove `dev`; keep test/check/fmt/logs/sync-secrets/deploy)
+
+* Rewrite: `src/core/pipeline.py`, `tests/test_pipeline.py`, `app.py`, `AGENTS.md`, `README.md`, `justfile` (remove `dev`; keep test/check/fmt/logs/sync-secrets/deploy)
 
 **Interfaces:**
-- Consumes: `HubClient`, `imported_from`, `tmdb.*`, `youtube.*`, `feeds.*`.
-- Produces: `run_daily(hub: HubClient, http: httpx.Client, settings: Settings) -> dict` returning `{"tv": {"shows": n, "episodes": n, "failed": n}, "youtube": {"channels": n, "videos": n, "failed": n}, "feeds": {"feeds": n, "articles": n, "failed": n}}`; `sync_tv(hub, http, key)`, `sync_youtube(hub, http, key)`, `sync_feeds(hub, http)` with the same per-kind dict shape. Batch pushes in chunks of 200 rows.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_pipeline.py`)
+* Consumes: `HubClient`, `imported_from`, `tmdb.*`, `youtube.*`, `feeds.*`.
 
-```python
+* Produces: `run_daily(hub: HubClient, http: httpx.Client, settings: Settings) -> dict` returning `{"tv": {"shows": n, "episodes": n, "failed": n}, "youtube": {"channels": n, "videos": n, "failed": n}, "feeds": {"feeds": n, "articles": n, "failed": n}}`; `sync_tv(hub, http, key)`, `sync_youtube(hub, http, key)`, `sync_feeds(hub, http)` with the same per-kind dict shape. Batch pushes in chunks of 200 rows.
+
+* [ ] **Step 1: Write the failing tests** (`tests/test_pipeline.py`)
+
+```Python
 import json
 from pathlib import Path
 
@@ -1009,11 +1023,11 @@ def test_run_daily_returns_all_three_sections(mocker):
 
 Check the `rss2.xml` fixture: it must contain items with urls `https://blog.example.com/first`, `/second`, `/third` (the existing pipeline test relied on `/third` being newest). Adjust the asserted ids to the fixture's actual three urls if they differ.
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_pipeline.py -v` -> FAIL.
+* [ ] **Step 2: Run** `uv run pytest tests/test_pipeline.py -v` -> FAIL.
 
-- [ ] **Step 3: Implement `src/core/pipeline.py`**
+* [ ] **Step 3: Implement** **`src/core/pipeline.py`**
 
-```python
+```Python
 """Daily ingestion: TMDB episodes, YouTube videos, feed articles -> life-data.
 
 Plain Python, no Modal imports. Each source is independent: a failure is
@@ -1112,11 +1126,11 @@ def run_daily(hub: HubClient, http: httpx.Client, settings) -> dict:
     }
 ```
 
-- [ ] **Step 4: Run** `uv run pytest -v` -> all PASS (config, hub, tmdb, youtube, feeds, watcher, pipeline).
+* [ ] **Step 4: Run** `uv run pytest -v` -> all PASS (config, hub, tmdb, youtube, feeds, watcher, pipeline).
 
-- [ ] **Step 5: Rewrite `app.py`**
+* [ ] **Step 5: Rewrite** **`app.py`**
 
-```python
+```Python
 """Modal deployment shim - ALL infrastructure lives here, as code.
 
 Business logic stays in src/core/ (plain Python, no Modal imports). This
@@ -1168,7 +1182,7 @@ def main() -> None:
 
 Also delete the old `main()` sys.path hack; local runs go through Modal (`modal run`) so the image and secret are the real ones.
 
-- [ ] **Step 6: Update `justfile`** - remove the `dev` recipe (no endpoints to serve); add under the project-specific divider:
+* [ ] **Step 6: Update** **`justfile`** - remove the `dev` recipe (no endpoints to serve); add under the project-specific divider:
 
 ```
 # One ingestion run on Modal, now (uses the deployed secret)
@@ -1176,27 +1190,29 @@ run:
     uv run modal run app.py
 ```
 
-- [ ] **Step 7: Rewrite `AGENTS.md`** to describe the current state only: purpose (daily poller into life-data), the architecture rule, the four env vars, module map (`hub`, `tmdb`, `youtube`, `feeds`, `watcher`, `pipeline`), the "poller writes source facts; never a derived column" rule, the new-item rule (id not present), the X row skip, commands table (`test`, `check`, `fmt`, `logs`, `sync-secrets`, `deploy`, `run`), and the life-data tables it writes with a pointer to life-map. Remove every Notion reference, the 2026-07 history section, and the "Setup status" section. Rewrite `README.md` the same way (generic: any life-data hub, any TMDB/YouTube key; the Manual setup section becomes `op-project-bootstrap .env.tpl --repo <owner>/<repo>` plus "mint a `tables:write` hub token").
+* [ ] **Step 7: Rewrite** **`AGENTS.md`** to describe the current state only: purpose (daily poller into life-data), the architecture rule, the four env vars, module map (`hub`, `tmdb`, `youtube`, `feeds`, `watcher`, `pipeline`), the "poller writes source facts; never a derived column" rule, the new-item rule (id not present), the X row skip, commands table (`test`, `check`, `fmt`, `logs`, `sync-secrets`, `deploy`, `run`), and the life-data tables it writes with a pointer to life-map. Remove every Notion reference, the 2026-07 history section, and the "Setup status" section. Rewrite `README.md` the same way (generic: any life-data hub, any TMDB/YouTube key; the Manual setup section becomes `op-project-bootstrap .env.tpl --repo <owner>/<repo>` plus "mint a `tables:write` hub token").
 
-- [ ] **Step 8: Run** `uv run pytest -q && uv run ruff check . && uv run ruff format --check .` -> clean (run `uv run ruff format .` first if needed).
+* [ ] **Step 8: Run** `uv run pytest -q && uv run ruff check . && uv run ruff format --check .` -> clean (run `uv run ruff format .` first if needed).
 
-- [ ] **Step 9: Commit** `git add -A && git commit -m "Daily ingestion pipeline into life-data; cron-only Modal shim; docs describe the current state"`
+* [ ] **Step 9: Commit** `git add -A && git commit -m "Daily ingestion pipeline into life-data; cron-only Modal shim; docs describe the current state"`
 
----
+***
 
 ### Task 7: derivations - tv endpoint returns status and providers
 
 **Files:**
-- Modify: `derivations/src/core/tmdb.py`, `derivations/tests/test_tmdb.py`, `derivations/tests/fixtures/tv_66732.json`
+
+* Modify: `derivations/src/core/tmdb.py`, `derivations/tests/test_tmdb.py`, `derivations/tests/fixtures/tv_66732.json`
 
 **Interfaces:**
-- Produces: `tmdb.details("tv", id, key)` requests `append_to_response=credits,watch/providers`; `to_row("tv", data, today)` adds `tmdb_status: str | None` and `watch_providers: list[str]` (US `flatrate` `provider_name`s, in TMDB's `display_priority` order, `[]` when absent). Movies unchanged (no new keys).
 
-- [ ] **Step 1: Extend the fixture.** With the key from `op://Derivations/Derivations ENV/TMDB_API_KEY` (desktop auth), re-record `tests/fixtures/tv_66732.json` with `append_to_response=credits,watch/providers`, trimming `credits` the way AGENTS.md describes and keeping only the `US` entry of `watch/providers.results`. Confirm the file has `"status"` and `"watch/providers"`.
+* Produces: `tmdb.details("tv", id, key)` requests `append_to_response=credits,watch/providers`; `to_row("tv", data, today)` adds `tmdb_status: str | None` and `watch_providers: list[str]` (US `flatrate` `provider_name`s, in TMDB's `display_priority` order, `[]` when absent). Movies unchanged (no new keys).
 
-- [ ] **Step 2: Write the failing tests** (append to `tests/test_tmdb.py`)
+* [ ] **Step 1: Extend the fixture.** With the key from `op://Derivations/Derivations ENV/TMDB_API_KEY` (desktop auth), re-record `tests/fixtures/tv_66732.json` with `append_to_response=credits,watch/providers`, trimming `credits` the way AGENTS.md describes and keeping only the `US` entry of `watch/providers.results`. Confirm the file has `"status"` and `"watch/providers"`.
 
-```python
+* [ ] **Step 2: Write the failing tests** (append to `tests/test_tmdb.py`)
+
+```Python
 def test_tv_details_requests_watch_providers():
     client = FakeClient(FakeResponse(200, {"id": 1}))
     tmdb.details("tv", "1", "KEY", client=client)
@@ -1227,11 +1243,11 @@ def test_movie_row_has_no_tv_keys():
     assert "tmdb_status" not in row and "watch_providers" not in row
 ```
 
-- [ ] **Step 3: Run** `cd ~/Desktop/coding/active-projects/derivations && uv run pytest tests/test_tmdb.py -v` -> FAIL.
+* [ ] **Step 3: Run** `cd ~/Desktop/coding/active-projects/derivations && uv run pytest tests/test_tmdb.py -v` -> FAIL.
 
-- [ ] **Step 4: Implement** in `src/core/tmdb.py`: in `details`, `params={"api_key": key, "append_to_response": "credits" if kind == "movie" else "credits,watch/providers"}`. Add:
+* [ ] **Step 4: Implement** in `src/core/tmdb.py`: in `details`, `params={"api_key": key, "append_to_response": "credits" if kind == "movie" else "credits,watch/providers"}`. Add:
 
-```python
+```Python
 def providers_for(data: dict, region: str = "US") -> list[str]:
     entry = ((data.get("watch/providers") or {}).get("results") or {}).get(region) or {}
     flat = sorted(entry.get("flatrate") or [], key=lambda p: p.get("display_priority", 10**6))
@@ -1240,29 +1256,30 @@ def providers_for(data: dict, region: str = "US") -> list[str]:
 
 and in `to_row`, after building the dict: `if kind == "tv": row["tmdb_status"] = data.get("status"); row["watch_providers"] = providers_for(data)`. Update the module docstring and AGENTS.md's response description (`tmdb_status`, `watch_providers` on `/tv`).
 
-- [ ] **Step 5: Run** `uv run pytest -q && uv run ruff check . && uv run ruff format --check .` -> clean.
+* [ ] **Step 5: Run** `uv run pytest -q && uv run ruff check . && uv run ruff format --check .` -> clean.
 
-- [ ] **Step 6: Commit and deploy** `git add -A && git commit -m "tv: return TMDB status and US streaming providers" && git push origin main`, then `gh run list --limit 1 --json databaseId -q '.[0].databaseId'` and `gh run watch <id> --exit-status`. Verify: `curl` the deployed `/tv` with a Modal proxy key from the Life Data ENV item's `DERIVATIONS` JSON (desktop auth) and `{"tbl":"tv_shows","id":"76479","inputs":{"id":"76479"}}`; the response has `tmdb_status`.
+* [ ] **Step 6: Commit and deploy** `git add -A && git commit -m "tv: return TMDB status and US streaming providers" && git push origin main`, then `gh run list --limit 1 --json databaseId -q '.[0].databaseId'` and `gh run watch <id> --exit-status`. Verify: `curl` the deployed `/tv` with a Modal proxy key from the Life Data ENV item's `DERIVATIONS` JSON (desktop auth) and `{"tbl":"tv_shows","id":"76479","inputs":{"id":"76479"}}`; the response has `tmdb_status`.
 
----
+***
 
-### Task 8: life-data catalog: statuses, tv_shows columns, new tables, feed view (user op)
+### Task 8: life-data catalog: statuses, tv\_shows columns, new tables, feed view (user op)
 
 **Files:** none in a repo. Commands run with the installed `life` (the repo client `just run` in life-data if the installed one predates provenance support). Then `agent-config/skills/life-map/SKILL.md`.
 
 **Interfaces:**
-- Produces the tables the poller (Task 6) reads and writes, exactly these columns:
-  - `youtube_channels(id, title, handle, channel_url, uploads_playlist_id, follow, backfilled, content_type, tags, subscription, notion_id)`
-  - `youtube_videos(id, channel_id, title, published_at, duration_s, thumbnail_url, is_short, status, date_watched, tags, note, notion_id)`
-  - `feeds(id, kind, title, fetch, scrape_pattern, follow)`
-  - `articles(id, feed_id, title, published_at, status, date_read, tags, note, notion_id)`
-  - `tv_episodes(id, show_id, season, episode, title, air_date, runtime_min, status, date_watched, note)`
-  - `tv_shows` + `follow`, `tmdb_status`, `watch_providers`
-  - view `media_feed(kind, id, title, source, published_at, status)`
 
-- [ ] **Step 1: Unify tv_shows status.** Add the new option, move rows, drop the old one, fix the rules:
+* Produces the tables the poller (Task 6) reads and writes, exactly these columns:
+  * `youtube_channels(id, title, handle, channel_url, uploads_playlist_id, follow, backfilled, content_type, tags, subscription, notion_id)`
+  * `youtube_videos(id, channel_id, title, published_at, duration_s, thumbnail_url, is_short, status, date_watched, tags, note, notion_id)`
+  * `feeds(id, kind, title, fetch, scrape_pattern, follow)`
+  * `articles(id, feed_id, title, published_at, status, date_read, tags, note, notion_id)`
+  * `tv_episodes(id, show_id, season, episode, title, air_date, runtime_min, status, date_watched, note)`
+  * `tv_shows` + `follow`, `tmdb_status`, `watch_providers`
+  * view `media_feed(kind, id, title, source, published_at, status)`
 
-```bash
+* [ ] **Step 1: Unify tv\_shows status.** Add the new option, move rows, drop the old one, fix the rules:
+
+```Shell
 life property set tv_shows.status --options '[{"v":"Priority","d":"Need to watch / must watch"},{"v":"Not Started","d":"Default. Saved, not started"},{"v":"In Progress","d":"Currently watching"},{"v":"Finished","d":"Watched it all"},{"v":"Watched Some","d":"legacy, being renamed"},{"v":"Watched Parts","d":"Saw some episodes, not finished"},{"v":"Gave Up","d":"Stopped on purpose"}]'
 life sql "UPDATE tv_shows SET status = 'Watched Parts' WHERE status = 'Watched Some' AND deleted_at IS NULL"
 life sql "SELECT count(*) AS n FROM tv_shows WHERE status = 'Watched Some'"     # expect 0
@@ -1271,9 +1288,9 @@ life rule set tv-date-implies-terminal --scope table --tbl tv_shows --kind invar
 life rule rm tv-partial-is-watched-some
 ```
 
-- [ ] **Step 2: tv_shows columns**
+* [ ] **Step 2: tv\_shows columns**
 
-```bash
+```Shell
 life sql "ALTER TABLE tv_shows ADD COLUMN follow INTEGER NOT NULL DEFAULT 1"
 life sql "ALTER TABLE tv_shows ADD COLUMN tmdb_status TEXT"
 life sql "ALTER TABLE tv_shows ADD COLUMN watch_providers TEXT"
@@ -1284,9 +1301,9 @@ life derive tv_shows.tmdb_status      # backfill through the hub, ~5 chunks; exp
 life sql "SELECT tmdb_status, count(*) AS n FROM tv_shows WHERE deleted_at IS NULL GROUP BY 1"
 ```
 
-- [ ] **Step 3: New tables**
+* [ ] **Step 3: New tables**
 
-```bash
+```Shell
 life table create youtube_channels 'title:text' 'handle:text' 'channel_url:url' 'uploads_playlist_id:text' 'follow:bool!' 'backfilled:bool!' 'content_type:multi_select' 'tags:multi_select' 'subscription:select(Subscribed|Unsubscribed|To Watch|Never Subscribed|Legacy)' 'notion_id:text'
 life property set youtube_channels.follow --default 0 --description "Surface this channel's videos in media_feed. Off by default; explicit opt-in."
 life property set youtube_channels.backfilled --default 0 --description "Poller flag: the full uploads back catalog has been ingested; daily runs read only the newest page from then on."
@@ -1313,17 +1330,17 @@ life property set tv_episodes.status --default "Not Started"
 life table set tv_episodes --purpose "Every episode of every show in tv_shows; id = TMDB episode id. Notion TV Episodes superseded." --owner media-center
 ```
 
-- [ ] **Step 4: provenance from_kind options.** Read the current list, append `youtube_channels`, `tv_shows`, `feeds`, `notion_media` (the Notion migration source), write it back:
+* [ ] **Step 4: provenance from\_kind options.** Read the current list, append `youtube_channels`, `tv_shows`, `feeds`, `notion_media` (the Notion migration source), write it back:
 
-```bash
+```Shell
 life sql "SELECT options FROM catalog_properties WHERE tbl='provenance' AND col='from_kind'"
 # then, with the existing values copied verbatim into <existing...>:
 life property set provenance.from_kind --options '<existing...>,youtube_channels,tv_shows,feeds,notion_media'
 ```
 
-- [ ] **Step 5: The feed view**
+* [ ] **Step 5: The feed view**
 
-```bash
+```Shell
 life sql "CREATE VIEW media_feed AS
 SELECT 'youtube_videos' AS kind, v.id, v.title, c.title AS source, v.published_at, v.status
   FROM youtube_videos v JOIN youtube_channels c ON c.id = v.channel_id
@@ -1343,95 +1360,100 @@ life sync && life check
 
 If `life check` or `life sync` reports the view as an uncataloged table, drop it (`life sql "DROP VIEW media_feed"`) and instead record the query in life-map as the canonical feed query; the poller and readers do not depend on the view existing.
 
-- [ ] **Step 6: Document in life-map.** In `~/.config/agent-config/skills/life-map/SKILL.md` (edit the real file, not a symlink target of CLAUDE.md), add sections following the movies template for `youtube_channels`, `youtube_videos`, `feeds`, `articles`, `tv_episodes` (purpose + provenance, row id, column contract table with required/default/allowed values, context columns, conventions: poller-written facts, follow semantics, the unified status vocabulary, `is_short` heuristic), update the `tv_shows` section (three new columns, `Watched Parts`), add the ID registry rows (`youtube_channels` -> `https://www.youtube.com/channel/<id>`, `youtube_videos` -> `https://www.youtube.com/watch?v=<id>`, `tv_episodes` -> `https://www.themoviedb.org/tv/<show>/season/<s>/episode/<e>`, `articles`/`feeds` -> the URL itself, `notion_media` -> the retired Notion page), and a "Media feed" subsection with the `media_feed` query and the three questions agents answer with it ("what's new", "mark X finished" = `UPDATE <table> SET status='Finished', date_watched=date('now') WHERE id=?`, "what am I following"). Bump **Last verified**. Commit and push agent-config (`git -C ~/.config/agent-config add skills/life-map/SKILL.md && git -C ~/.config/agent-config commit -m "life-map: media tables, feed query, follow semantics" && git -C ~/.config/agent-config push`).
+* [ ] **Step 6: Document in life-map.** In `~/.config/agent-config/skills/life-map/SKILL.md` (edit the real file, not a symlink target of CLAUDE.md), add sections following the movies template for `youtube_channels`, `youtube_videos`, `feeds`, `articles`, `tv_episodes` (purpose + provenance, row id, column contract table with required/default/allowed values, context columns, conventions: poller-written facts, follow semantics, the unified status vocabulary, `is_short` heuristic), update the `tv_shows` section (three new columns, `Watched Parts`), add the ID registry rows (`youtube_channels` -> `https://www.youtube.com/channel/<id>`, `youtube_videos` -> `https://www.youtube.com/watch?v=<id>`, `tv_episodes` -> `https://www.themoviedb.org/tv/<show>/season/<s>/episode/<e>`, `articles`/`feeds` -> the URL itself, `notion_media` -> the retired Notion page), and a "Media feed" subsection with the `media_feed` query and the three questions agents answer with it ("what's new", "mark X finished" = `UPDATE <table> SET status='Finished', date_watched=date('now') WHERE id=?`, "what am I following"). Bump **Last verified**. Commit and push agent-config (`git -C ~/.config/agent-config add skills/life-map/SKILL.md && git -C ~/.config/agent-config commit -m "life-map: media tables, feed query, follow semantics" && git -C ~/.config/agent-config push`).
 
----
+***
 
 ### Task 9: Migrate channels, videos, articles from Notion; seed feeds and follows (user op)
 
 **Files:** scratchpad `media-migrate/channels.py`, `videos.py`, `articles.py`, `seed_feeds.py` (PEP 723 scripts, `uv run`). Never committed.
 
 **Interfaces:**
-- Consumes: `youtube.resolve_channel` semantics (reimplemented inline in the script: the script runs outside the repo), Notion data sources: YouTube Channels `c7dcc5f4-5b71-49b0-aabb-f791ab0dc69f`, YouTube Videos `cb9e2038-139a-4f53-82a2-095ea19df27b`, Articles `1c703953-a8af-8062-a379-000b8e250413`.
-- Produces: rows in `youtube_channels` (149), `youtube_videos` (72), `articles` (8), `feeds` (10), `provenance` edges `from_kind = "notion_media"`, `from_ref = <notion page id>`, `rel = "imported_from"`, `asserted_by = "script:media-migrate"`.
 
-- [ ] **Step 1: `channels.py`.** Query the Notion channels DB (paginate, `NOTION_API_TOKEN` from the AI Agent vault ref in notion-workspace). For each page: `channel_url` = Channel URL; resolve via the YouTube Data API `channels.list` (`id=` for `/channel/UC..`, else `forHandle=`) with the key from Synapse ENV (desktop auth); write `resolved.json` `[{notion_id, name, channel_url, id, title, handle, uploads_playlist_id, status, content_type, tags}]` and `unresolved.md` listing every page the API could not resolve. **ALEX reviews `unresolved.md`** (expected: a few dead or renamed channels; owner supplies the right URL or says skip).
+* Consumes: `youtube.resolve_channel` semantics (reimplemented inline in the script: the script runs outside the repo), Notion data sources: YouTube Channels `c7dcc5f4-5b71-49b0-aabb-f791ab0dc69f`, YouTube Videos `cb9e2038-139a-4f53-82a2-095ea19df27b`, Articles `1c703953-a8af-8062-a379-000b8e250413`.
 
-- [ ] **Step 2: Insert channels.** Build rows `{id, title, handle, channel_url, uploads_playlist_id, follow: 0, backfilled: 0, content_type: [..], tags: [..], subscription: <Notion Status>, notion_id: <dash-stripped>}` and `echo <json> | life insert youtube_channels`; then provenance rows `{id: "notion_media:<notion_id>:<channel id>", from_kind: "notion_media", from_ref: <notion_id>, to_kind: "youtube_channels", to_ref: <id>, rel: "imported_from", detail: "{\"created_row\":1}", asserted_by: "script:media-migrate"}` via `life insert provenance`. Verify `life sql "SELECT count(*) FROM youtube_channels WHERE deleted_at IS NULL"` == resolved count.
+* Produces: rows in `youtube_channels` (149), `youtube_videos` (72), `articles` (8), `feeds` (10), `provenance` edges `from_kind = "notion_media"`, `from_ref = <notion page id>`, `rel = "imported_from"`, `asserted_by = "script:media-migrate"`.
 
-- [ ] **Step 3: Flip follows.** `life sql "UPDATE youtube_channels SET follow = 1 WHERE id IN (<Fireship>, <Veritasium>, <Last Week Tonight>)"` using the ids from `resolved.json` (Veritasium is `UCHnyfMqiRRG1u-2MsSQLbXA`, Fireship is `UCsBjURrPoezykLs9EqgamOA`, both verified against the Data API 2026-09-08; Last Week Tonight comes from the file - never guess a channel id). Dave Jorgenson is not in Notion: resolve `https://www.youtube.com/@davejorgenson` with `channels.list forHandle`; if that handle does not resolve, search `channels.list` is not available so use `search.list?type=channel&q=Dave Jorgenson` (100 units) and confirm the title with the owner; insert with `follow = 1`, `subscription = "Never Subscribed"`. kiidkatze: same lookup, insert with `follow = 0` and report the result to the owner.
+* [ ] **Step 1:** **`channels.py`.** Query the Notion channels DB (paginate, `NOTION_API_TOKEN` from the AI Agent vault ref in notion-workspace). For each page: `channel_url` = Channel URL; resolve via the YouTube Data API `channels.list` (`id=` for `/channel/UC..`, else `forHandle=`) with the key from Synapse ENV (desktop auth); write `resolved.json` `[{notion_id, name, channel_url, id, title, handle, uploads_playlist_id, status, content_type, tags}]` and `unresolved.md` listing every page the API could not resolve. **ALEX reviews** **`unresolved.md`** (expected: a few dead or renamed channels; owner supplies the right URL or says skip).
 
-- [ ] **Step 4: `videos.py`.** Query the Notion videos DB; for each page take the video id from Video URL (`v=` param or `youtu.be/<id>`), call `videos.list part=snippet,contentDetails` in batches of 50 to get `channelId`, `title`, `publishedAt`, `duration`; status map `To Watch`->`Not Started`, `Watched`->`Finished`, `Priority`/`In Progress` unchanged; `date_watched` = Notion Date Watched (date part); `tags` = Notion Tags names. A video whose channel id is not in `youtube_channels` first gets a channel row (`follow 0`, `backfilled 0`, `subscription "Never Subscribed"`, title from the snippet, uploads playlist = `"UU" + id[2:]`). Insert videos and `notion_media` provenance edges. Verify count == 72 minus any dead video ids (list those in the report).
+* [ ] **Step 2: Insert channels.** Build rows `{id, title, handle, channel_url, uploads_playlist_id, follow: 0, backfilled: 0, content_type: [..], tags: [..], subscription: <Notion Status>, notion_id: <dash-stripped>}` and `echo <json> | life insert youtube_channels`; then provenance rows `{id: "notion_media:<notion_id>:<channel id>", from_kind: "notion_media", from_ref: <notion_id>, to_kind: "youtube_channels", to_ref: <id>, rel: "imported_from", detail: "{\"created_row\":1}", asserted_by: "script:media-migrate"}` via `life insert provenance`. Verify `life sql "SELECT count(*) FROM youtube_channels WHERE deleted_at IS NULL"` == resolved count.
 
-- [ ] **Step 5: `articles.py`.** 8 rows: `id = canonical_url(URL)` (same rules as `feeds.canonical_url`), `title` = Name (or the URL's last path segment when empty), `status` `Done`->`Finished`, `In progress`->`In Progress`, `date_read` = Read Date, `feed_id` NULL, `notion_id`. Insert plus provenance edges.
+* [ ] **Step 3: Flip follows.** `life sql "UPDATE youtube_channels SET follow = 1 WHERE id IN (<Fireship>, <Veritasium>, <Last Week Tonight>)"` using the ids from `resolved.json` (Veritasium is `UCHnyfMqiRRG1u-2MsSQLbXA`, Fireship is `UCsBjURrPoezykLs9EqgamOA`, both verified against the Data API 2026-09-08; Last Week Tonight comes from the file - never guess a channel id). Dave Jorgenson is not in Notion: resolve `https://www.youtube.com/@davejorgenson` with `channels.list forHandle`; if that handle does not resolve, search `channels.list` is not available so use `search.list?type=channel&q=Dave Jorgenson` (100 units) and confirm the title with the owner; insert with `follow = 1`, `subscription = "Never Subscribed"`. kiidkatze: same lookup, insert with `follow = 0` and report the result to the owner.
 
-- [ ] **Step 6: `seed_feeds.py`.** Probe each source for a feed with `curl -sI` and a `<link rel="alternate" type="application/rss+xml">` scan of the page, then insert the row that works. Candidates to try, in order, per source:
+* [ ] **Step 4:** **`videos.py`.** Query the Notion videos DB; for each page take the video id from Video URL (`v=` param or `youtu.be/<id>`), call `videos.list part=snippet,contentDetails` in batches of 50 to get `channelId`, `title`, `publishedAt`, `duration`; status map `To Watch`->`Not Started`, `Watched`->`Finished`, `Priority`/`In Progress` unchanged; `date_watched` = Notion Date Watched (date part); `tags` = Notion Tags names. A video whose channel id is not in `youtube_channels` first gets a channel row (`follow 0`, `backfilled 0`, `subscription "Never Subscribed"`, title from the snippet, uploads playlist = `"UU" + id[2:]`). Insert videos and `notion_media` provenance edges. Verify count == 72 minus any dead video ids (list those in the report).
 
-| Source | kind | try first | fallback |
-|---|---|---|---|
-| Cherri releases | changelog | `https://github.com/electrikmilk/cherri/releases.atom` (rss) | none needed |
-| Notion blog / releases | changelog | `https://www.notion.so/releases` page feed link | `scrape:links` on `https://www.notion.so/releases`, pattern `/releases/\d{4}-\d{2}-\d{2}` |
-| Raycast changelog | changelog | `https://www.raycast.com/changelog` feed link | `scrape:links`, pattern `/changelog/[^/]+$` |
-| Waymo Waypoint blog | blog | `https://waymo.com/blog/` feed link | `scrape:links`, pattern `/blog/\d{4}/` |
-| Home Assistant blog | blog | `https://www.home-assistant.io/atom.xml` (rss) | none needed |
-| Works with Home Assistant | blog | `https://partner.home-assistant.io/blog/` feed link | `scrape:links`, pattern `/blog/[^/]+/$` |
-| Chrome what's new | changelog | `https://chromereleases.googleblog.com/feeds/posts/default` (rss, stable channel notes) | `scrape:links` on `https://www.google.com/chrome/whats-new/`, pattern `/whats-new/` |
-| Flighty newsletter | newsletter | `https://flighty.com/blog` feed link | insert with `fetch = "x"`-style placeholder? No: if no web feed exists, do NOT insert; record it in the report as "Gmail source kind, deferred" per the spec |
-| MacStories | blog | `https://www.macstories.net/feed/` (rss) | none needed |
-| intcyberdigest | x | `https://x.com/intcyberdigest`, `fetch = "x"` | separate mini plan |
+* [ ] **Step 5:** **`articles.py`.** 8 rows: `id = canonical_url(URL)` (same rules as `feeds.canonical_url`), `title` = Name (or the URL's last path segment when empty), `status` `Done`->`Finished`, `In progress`->`In Progress`, `date_read` = Read Date, `feed_id` NULL, `notion_id`. Insert plus provenance edges.
+
+* [ ] **Step 6:** **`seed_feeds.py`.** Probe each source for a feed with `curl -sI` and a `<link rel="alternate" type="application/rss+xml">` scan of the page, then insert the row that works. Candidates to try, in order, per source:
+
+| Source                    | kind       | try first                                                                               | fallback                                                                                                                                                     |
+| ------------------------- | ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Cherri releases           | changelog  | `https://github.com/electrikmilk/cherri/releases.atom` (rss)                            | none needed                                                                                                                                                  |
+| Notion blog / releases    | changelog  | `https://www.notion.so/releases` page feed link                                         | `scrape:links` on `https://www.notion.so/releases`, pattern `/releases/\d{4}-\d{2}-\d{2}`                                                                    |
+| Raycast changelog         | changelog  | `https://www.raycast.com/changelog` feed link                                           | `scrape:links`, pattern `/changelog/[^/]+$`                                                                                                                  |
+| Waymo Waypoint blog       | blog       | `https://waymo.com/blog/` feed link                                                     | `scrape:links`, pattern `/blog/\d{4}/`                                                                                                                       |
+| Home Assistant blog       | blog       | `https://www.home-assistant.io/atom.xml` (rss)                                          | none needed                                                                                                                                                  |
+| Works with Home Assistant | blog       | `https://partner.home-assistant.io/blog/` feed link                                     | `scrape:links`, pattern `/blog/[^/]+/$`                                                                                                                      |
+| Chrome what's new         | changelog  | `https://chromereleases.googleblog.com/feeds/posts/default` (rss, stable channel notes) | `scrape:links` on `https://www.google.com/chrome/whats-new/`, pattern `/whats-new/`                                                                          |
+| Flighty newsletter        | newsletter | `https://flighty.com/blog` feed link                                                    | insert with `fetch = "x"`-style placeholder? No: if no web feed exists, do NOT insert; record it in the report as "Gmail source kind, deferred" per the spec |
+| MacStories                | blog       | `https://www.macstories.net/feed/` (rss)                                                | none needed                                                                                                                                                  |
+| intcyberdigest            | x          | `https://x.com/intcyberdigest`, `fetch = "x"`                                           | separate mini plan                                                                                                                                           |
 
 For every inserted `rss` row, run `feedparser.parse(url)` in the script and require `>= 1` entry. For every `scrape:links` row, fetch the page and require the pattern to match `>= 1` link; print the first three titles for the owner to eyeball. All rows `follow = 1`.
 
-- [ ] **Step 7: Report.** Write `media-migrate/report.md` (counts per table, unresolved channels, dead videos, feeds that fell back to scraping, the Flighty deferral) and paste its content in chat. Run `life sync && life check` -> clean.
+* [ ] **Step 7: Report.** Write `media-migrate/report.md` (counts per table, unresolved channels, dead videos, feeds that fell back to scraping, the Flighty deferral) and paste its content in chat. Run `life sync && life check` -> clean.
 
----
+***
 
 ### Task 10: Ops and first ingestion run
 
 **Files:** none in a repo (1Password and Modal state).
 
-- [ ] **Step 1: Hub token.** `life token create media-center --scopes tables:write` (admin token via the CLI's configured `token_cmd`). Never print the value in chat; pipe it straight into 1Password in the next step.
+* [ ] **Step 1: Hub token.** `life token create media-center --scopes tables:write` (admin token via the CLI's configured `token_cmd`). Never print the value in chat; pipe it straight into 1Password in the next step.
 
-- [ ] **Step 2: Vault fields (ALEX approves Touch ID).** In one `zsh -ic 'op-personal ...'` batch: on the `Media Center ENV` item (`grnxaeni7bpl57nupbwz3ak2ka`, vault `ciut3oezyps2jalnapskesfzje`) delete `NOTION_API_KEY` and `SOURCE_DBS`, add `LIFE_HUB_URL=https://life-data.nqipomyrjb.workers.dev`, `LIFE_HUB_TOKEN=<token>`, `TMDB_API_KEY=<copy of Derivations ENV TMDB_API_KEY>`, `YOUTUBE_API_KEY=<copy of Synapse ENV GOOGLE_YOUTUBE_API_KEY>`; on `Media Center CI Modal Token` (`y2twlexpos2gddjoyep2sm5eoi`) set `token-id` and `token-secret` to a Modal token minted for CI (owner mints at modal.com/settings/tokens, or reuses the Derivations CI Modal Token values). Every edit keeps the existing tags. Then `op-project-bootstrap .env.tpl --check` -> all refs resolve.
+* [ ] **Step 2: Vault fields (ALEX approves Touch ID).** In one `zsh -ic 'op-personal ...'` batch: on the `Media Center ENV` item (`grnxaeni7bpl57nupbwz3ak2ka`, vault `ciut3oezyps2jalnapskesfzje`) delete `NOTION_API_KEY` and `SOURCE_DBS`, add `LIFE_HUB_URL=https://life-data.nqipomyrjb.workers.dev`, `LIFE_HUB_TOKEN=<token>`, `TMDB_API_KEY=<copy of Derivations ENV TMDB_API_KEY>`, `YOUTUBE_API_KEY=<copy of Synapse ENV GOOGLE_YOUTUBE_API_KEY>`; on `Media Center CI Modal Token` (`y2twlexpos2gddjoyep2sm5eoi`) set `token-id` and `token-secret` to a Modal token minted for CI (owner mints at modal.com/settings/tokens, or reuses the Derivations CI Modal Token values). Every edit keeps the existing tags. Then `op-project-bootstrap .env.tpl --check` -> all refs resolve.
 
-- [ ] **Step 3: Deploy.** `git push origin main` (the spec commit, the plan, Tasks 1 to 6). `gh run list --limit 1 --json databaseId -q '.[0].databaseId'`, `gh run watch <id> --exit-status`. On failure `gh run view <id> --log-failed`, fix, push again.
+* [ ] **Step 3: Deploy.** `git push origin main` (the spec commit, the plan, Tasks 1 to 6). `gh run list --limit 1 --json databaseId -q '.[0].databaseId'`, `gh run watch <id> --exit-status`. On failure `gh run view <id> --log-failed`, fix, push again.
 
-- [ ] **Step 4: First run.** `just run` (= `uv run modal run app.py`, needs `uv run modal token new` once on this machine if missing). Expect the TV section to report `shows == count(tv_shows)`, YouTube `channels == count(youtube_channels)`. If YouTube quota (HTTP 403 `quotaExceeded`) stops the back catalog, the affected channels stay `backfilled = 0` and the next day's cron continues; run `just run` again the next day until every channel reports `backfilled = 1`:
+* [ ] **Step 4: First run.** `just run` (= `uv run modal run app.py`, needs `uv run modal token new` once on this machine if missing). Expect the TV section to report `shows == count(tv_shows)`, YouTube `channels == count(youtube_channels)`. If YouTube quota (HTTP 403 `quotaExceeded`) stops the back catalog, the affected channels stay `backfilled = 0` and the next day's cron continues; run `just run` again the next day until every channel reports `backfilled = 1`:
 
-```bash
+```Shell
 life sync && life sql "SELECT backfilled, count(*) AS n FROM youtube_channels WHERE deleted_at IS NULL GROUP BY 1"
 life sql "SELECT count(*) AS episodes FROM tv_episodes WHERE deleted_at IS NULL"
 life sql "SELECT kind, count(*) AS n FROM media_feed GROUP BY 1"
 ```
 
-- [ ] **Step 5: Verify the feed.** `life sql "SELECT kind, source, title, published_at FROM media_feed LIMIT 20"` shows Fireship / Veritasium / LWT videos and articles from the seeded feeds, newest first. `just logs` shows one `tv_synced` per show and no unexplained `*_failed`. Paste the counts in chat.
+* [ ] **Step 5: Verify the feed.** `life sql "SELECT kind, source, title, published_at FROM media_feed LIMIT 20"` shows Fireship / Veritasium / LWT videos and articles from the seeded feeds, newest first. `just logs` shows one `tv_synced` per show and no unexplained `*_failed`. Paste the counts in chat.
 
----
+***
 
 ### Task 11: Import Notion TV Episodes watched marks (user op, after Task 10)
 
 **Files:** scratchpad `media-migrate/episodes.py`.
 
-- [ ] **Step 1:** Query the Notion TV Episodes DB (`1c703953-a8af-809d-b3a1-000b7dd7c0d4`): 110 rows, all Status `Watched`, `TV Show` relation -> Notion TV Shows page id, Season/Episode numbers empty, so match by title. Map the relation to `tv_shows.id` via `notion_id` (dash-stripped): `3e62da86...` -> `549` (Law & Order), `33103953-a8af-8049...` -> `2190` (South Park).
+* [ ] **Step 1:** Query the Notion TV Episodes DB (`1c703953-a8af-809d-b3a1-000b7dd7c0d4`): 110 rows, all Status `Watched`, `TV Show` relation -> Notion TV Shows page id, Season/Episode numbers empty, so match by title. Map the relation to `tv_shows.id` via `notion_id` (dash-stripped): `3e62da86...` -> `549` (Law & Order), `33103953-a8af-8049...` -> `2190` (South Park).
 
-- [ ] **Step 2:** For each Notion episode, `life sql "SELECT id FROM tv_episodes WHERE show_id = ? AND lower(title) = lower(?) AND deleted_at IS NULL"`; on exactly one match `UPDATE tv_episodes SET status = 'Finished', date_watched = <Notion created_time date> WHERE id = ?` and insert a provenance row `{id: "notion_media:<notion_id>:<episode id>", from_kind: "notion_media", from_ref: <notion_id>, to_kind: "tv_episodes", to_ref: <id>, field: "date_watched", rel: "evidence_of", detail: "{\"confidence\":\"high\"}", asserted_by: "script:media-migrate"}`. Zero or multiple matches go to `episodes-unmatched.md` with the candidates.
+* [ ] **Step 2:** For each Notion episode, `life sql "SELECT id FROM tv_episodes WHERE show_id = ? AND lower(title) = lower(?) AND deleted_at IS NULL"`; on exactly one match `UPDATE tv_episodes SET status = 'Finished', date_watched = <Notion created_time date> WHERE id = ?` and insert a provenance row `{id: "notion_media:<notion_id>:<episode id>", from_kind: "notion_media", from_ref: <notion_id>, to_kind: "tv_episodes", to_ref: <id>, field: "date_watched", rel: "evidence_of", detail: "{\"confidence\":\"high\"}", asserted_by: "script:media-migrate"}`. Zero or multiple matches go to `episodes-unmatched.md` with the candidates.
 
-- [ ] **Step 3:** Report matched / unmatched counts in chat; **ALEX** resolves the unmatched list or says skip. `life sync && life check` -> clean.
+* [ ] **Step 3:** Report matched / unmatched counts in chat; **ALEX** resolves the unmatched list or says skip. `life sync && life check` -> clean.
 
----
+***
 
 ### Task 12: Synapse writes YouTube captures to life-data
 
 **Files:**
-- Modify: `synapse/src/core/handlers.py` (`handle_youtube_logic`), `synapse/src/core/databases.yaml` (`youtube-videos`, `youtube-channels` stanzas), `synapse/tests/test_handlers.py`, `synapse/AGENTS.md`
+
+* Modify: `synapse/src/core/handlers.py` (`handle_youtube_logic`), `synapse/src/core/databases.yaml` (`youtube-videos`, `youtube-channels` stanzas), `synapse/tests/test_handlers.py`, `synapse/AGENTS.md`
 
 **Interfaces:**
-- Consumes: `push_rows(table, rows)` from `core/life_hub.py`; `get_youtube()` client; `get_youtube_video_id(url)`, `sanitize_youtube_url(url)`; `create_cleanup_task(text)`; `Failed`.
-- Produces: `handle_youtube_logic("youtube-videos", data) -> "youtube_videos/<video id>" | Failed`. Pushes a `youtube_channels` row `{id, title, handle, channel_url, uploads_playlist_id, follow: 0, backfilled: 0, subscription: "Never Subscribed", updated_at}` only when the channel is new (a `videos.list` snippet gives `channelId`/`channelTitle`; `channels.list part=snippet,contentDetails id=` gives handle and uploads playlist), then a `youtube_videos` row `{id, channel_id, title, published_at, duration_s, thumbnail_url, is_short, status, tags?, updated_at}`. Status map: yaml allowlist becomes the unified vocabulary; the prompt's `To Watch` -> `Not Started`, `Watched` -> `Finished`.
 
-- [ ] **Step 1: Write the failing tests** (replace the YouTube tests in `tests/test_handlers.py`; mirror the movies tests' `patch` style):
+* Consumes: `push_rows(table, rows)` from `core/life_hub.py`; `get_youtube()` client; `get_youtube_video_id(url)`, `sanitize_youtube_url(url)`; `create_cleanup_task(text)`; `Failed`.
 
-```python
+* Produces: `handle_youtube_logic("youtube-videos", data) -> "youtube_videos/<video id>" | Failed`. Pushes a `youtube_channels` row `{id, title, handle, channel_url, uploads_playlist_id, follow: 0, backfilled: 0, subscription: "Never Subscribed", updated_at}` only when the channel is new (a `videos.list` snippet gives `channelId`/`channelTitle`; `channels.list part=snippet,contentDetails id=` gives handle and uploads playlist), then a `youtube_videos` row `{id, channel_id, title, published_at, duration_s, thumbnail_url, is_short, status, tags?, updated_at}`. Status map: yaml allowlist becomes the unified vocabulary; the prompt's `To Watch` -> `Not Started`, `Watched` -> `Finished`.
+
+* [ ] **Step 1: Write the failing tests** (replace the YouTube tests in `tests/test_handlers.py`; mirror the movies tests' `patch` style):
+
+```Python
 class TestYouTubeToLifeData:
     SNIPPET = {"items": [{"id": "dQw4w9WgXcQ", "snippet": {"title": "Never Gonna Give You Up", "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw", "channelTitle": "Rick Astley", "publishedAt": "2009-10-25T06:57:33Z"}, "contentDetails": {"duration": "PT3M33S"}}]}
     CHANNEL = {"items": [{"id": "UCuAXFkgsw1L7xaCfnd5JJOw", "snippet": {"title": "Rick Astley", "customUrl": "@rickastleyyt"}, "contentDetails": {"relatedPlaylists": {"uploads": "UUuAXFkgsw1L7xaCfnd5JJOw"}}}]}
@@ -1488,32 +1510,32 @@ class TestYouTubeToLifeData:
 
 `known_channel_ids()` is a new helper in `handlers.py`: `POST <hub>/v1/rows/pull {"table": "youtube_channels", "columns": ["id", "deleted_at"], "since": ""}` with the Synapse hub token (the token needs `tables:read` too: re-mint `life token create synapse --scopes tables:read,tables:write` and update the Synapse ENV field, **ALEX approves**), returning the set of non-deleted ids. Add `pull_ids(table)` to `life_hub.py` next to `push_rows` with a test in `tests/test_life_hub.py` that asserts the request body and the deleted-row filter.
 
-- [ ] **Step 2: Run** `cd ~/Desktop/coding/active-projects/synapse && uv run pytest tests/test_handlers.py -k YouTube -v` -> FAIL.
+* [ ] **Step 2: Run** `cd ~/Desktop/coding/active-projects/synapse && uv run pytest tests/test_handlers.py -k YouTube -v` -> FAIL.
 
-- [ ] **Step 3: Implement.** Replace the body of `handle_youtube_logic` with: sanitize URL, extract id (raise `ValueError` if none); `snippet = get_youtube().videos().list(part="snippet,contentDetails", id=vid).execute()["items"][0]`; if `snippet["snippet"]["channelId"] not in known_channel_ids()`: `ch = get_youtube().channels().list(part="snippet,contentDetails", id=channel_id).execute()["items"][0]`, push the channel row, `create_cleanup_task(f"Classify new Channel: {title}")`; build the video row (duration via the same `parse_iso8601_duration` regex as media-center, copied into `handlers.py` as a 6-line helper; `is_short = duration <= 180`; `thumbnail_url = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"`; status from `data` through `{"To Watch": "Not Started", "Watched": "Finished"}.get(s, s) or "Not Started"`; `tags` only when present; `updated_at = now_utc_iso_ms()`); push; on rejected -> `create_cleanup_task` + `Failed`; return `f"youtube_videos/{vid}"`. In `databases.yaml`: `youtube-videos` gets `hub_table: "youtube_videos"`, drops `db_id`, Status allowlist becomes `["Priority", "Not Started", "In Progress", "Finished", "Watched Parts", "Gave Up"]` with the instruction rewritten so "watched/seen" -> `Finished` and neutral -> `Not Started`; `youtube-channels` gets `hub_table: "youtube_channels"` and drops `db_id`. Grep for every reader of `get_db_id("youtube-videos")` / `("youtube-channels")` (`fetch_existing_page`, `hydrate_dynamic_options`, `scripts/fetch_property_ids.py`) and confirm `hub_table` stanzas are skipped as they are for movies.
+* [ ] **Step 3: Implement.** Replace the body of `handle_youtube_logic` with: sanitize URL, extract id (raise `ValueError` if none); `snippet = get_youtube().videos().list(part="snippet,contentDetails", id=vid).execute()["items"][0]`; if `snippet["snippet"]["channelId"] not in known_channel_ids()`: `ch = get_youtube().channels().list(part="snippet,contentDetails", id=channel_id).execute()["items"][0]`, push the channel row, `create_cleanup_task(f"Classify new Channel: {title}")`; build the video row (duration via the same `parse_iso8601_duration` regex as media-center, copied into `handlers.py` as a 6-line helper; `is_short = duration <= 180`; `thumbnail_url = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"`; status from `data` through `{"To Watch": "Not Started", "Watched": "Finished"}.get(s, s) or "Not Started"`; `tags` only when present; `updated_at = now_utc_iso_ms()`); push; on rejected -> `create_cleanup_task` + `Failed`; return `f"youtube_videos/{vid}"`. In `databases.yaml`: `youtube-videos` gets `hub_table: "youtube_videos"`, drops `db_id`, Status allowlist becomes `["Priority", "Not Started", "In Progress", "Finished", "Watched Parts", "Gave Up"]` with the instruction rewritten so "watched/seen" -> `Finished` and neutral -> `Not Started`; `youtube-channels` gets `hub_table: "youtube_channels"` and drops `db_id`. Grep for every reader of `get_db_id("youtube-videos")` / `("youtube-channels")` (`fetch_existing_page`, `hydrate_dynamic_options`, `scripts/fetch_property_ids.py`) and confirm `hub_table` stanzas are skipped as they are for movies.
 
-- [ ] **Step 4: Run** `uv run pytest -q && uv run ruff check . && uv run ruff format --check .` -> clean. Update `AGENTS.md`'s "Not every category is a Notion DB" paragraph to list youtube-videos and youtube-channels.
+* [ ] **Step 4: Run** `uv run pytest -q && uv run ruff check . && uv run ruff format --check .` -> clean. Update `AGENTS.md`'s "Not every category is a Notion DB" paragraph to list youtube-videos and youtube-channels.
 
-- [ ] **Step 5: Commit, push, verify** `git add -A && git commit -m "YouTube captures write to life-data youtube_videos and youtube_channels"`, `git push origin main`, `gh run watch <id> --exit-status`. E2E: send one YouTube URL through Receptor (or `curl` the Synapse webhook with the proxy headers from the Synapse vault) and confirm `life sync && life sql "SELECT id, title, channel_id, status FROM youtube_videos ORDER BY created_at DESC LIMIT 1"` shows it with the channel resolved.
+* [ ] **Step 5: Commit, push, verify** `git add -A && git commit -m "YouTube captures write to life-data youtube_videos and youtube_channels"`, `git push origin main`, `gh run watch <id> --exit-status`. E2E: send one YouTube URL through Receptor (or `curl` the Synapse webhook with the proxy headers from the Synapse vault) and confirm `life sync && life sql "SELECT id, title, channel_id, status FROM youtube_videos ORDER BY created_at DESC LIMIT 1"` shows it with the channel resolved.
 
----
+***
 
 ### Task 13: Notion cleanup, tasks, catalog and memory (user op)
 
-- [ ] **Step 1: Retire DBs (ALEX, Notion UI).** Move YouTube Videos, YouTube Channels, TV Episodes, Articles, Short Form Videos, Radio Shows, Videogames, Media Consumption from the Databases page's Entertainment section to Legacy. Then in `notion-workspace` skill: mark those DBs RETIRED with their life-data table (or "no import") the way Movies/TV Shows are marked, and in `notion-automations/src/core/rules.py` remove the `R.YOUTUBE` and `R.TV` timestamp rules (they now point at retired DBs), with their tests, commit, push, `gh run watch`.
+* [ ] **Step 1: Retire DBs (ALEX, Notion UI).** Move YouTube Videos, YouTube Channels, TV Episodes, Articles, Short Form Videos, Radio Shows, Videogames, Media Consumption from the Databases page's Entertainment section to Legacy. Then in `notion-workspace` skill: mark those DBs RETIRED with their life-data table (or "no import") the way Movies/TV Shows are marked, and in `notion-automations/src/core/rules.py` remove the `R.YOUTUBE` and `R.TV` timestamp rules (they now point at retired DBs), with their tests, commit, push, `gh run watch`.
 
-- [ ] **Step 2: Tasks.** Via `ntn api v1/pages/<id> -X PATCH`:
-  - Completed + `AI Completed` + `Completed Date` = today: "Build blog scraper/tracker...", "Set up a tech changelog db separate from blogs db", "after blogs db is set up add a bunch of blogs...", "Add Dave Jorgensen to media center news list", "Add intcyberdigest to media center list...", "Set up YouTube channel sync with Notion DB" (rescoped: channels live in life-data; two-way subscription sync is the deferred task below), "Research which api ... TV Show new episodes", "Design TV show statuses to handle new seasons", "Figure out TV show status design...", "add a awaiting new season vs tv show over...", "Migrate TV Episodes to life-data", the YouTube Videos half of "Migrate Podcasts and YouTube Videos to life-data..." (edit its Name to "Migrate Podcasts to life-data with Spotify derivations" and leave it To Do).
-  - Canceled: "Build standalone iOS media center app with widgets", "Create youtube short form video Plugin", "Set up my youtube channels section and create separate statuses...", "Fill out all the views of the media center db...", "Add a plugin for reddit communities...", "Create a custom hook off of the TV episodes hook for when love is blind...", "Add all the insta accounts yt equivalents..." (infrabren/jtreezy69 rejected; kiidkatze handled in Task 9), "After yt channel is complete, add find these instagram guys' yt channels...".
-  - Leave To Do: "Track veritasium, summoning salt videos ... export my yt watching history" (rename to "Import YouTube watch history from Google Takeout into youtube_videos"), "Find a way to see my in progress yt videos...", "Mark down every John Oliver episode watched in Episodes DB" (now a `tv_episodes` update, keep).
-  - Create (High, Chore, due today, Project = Media Center): "Media Center X source: scrape @intcyberdigest into articles from the mini's logged-in Chrome (separate plan)"; "YouTube subscriptions two-way sync with youtube_channels.subscription (deferred)"; "Flighty newsletter as a Gmail-backed feeds source (deferred)". Create under the Notion Automations project: "After notion-automations reads life-data: when a Love Is Blind / The Ultimatum season is finished in tv_episodes, create a task to read the season's online drama, Reddit threads and memes".
-  - Close this session's task (`3d503953-a8af-81e7-a4f8-cd2fc2c31d29`): Completed, `AI Completed`, `Completed Date`.
+* [ ] **Step 2: Tasks.** Via `ntn api v1/pages/<id> -X PATCH`:
+  * Completed + `AI Completed` + `Completed Date` = today: "Build blog scraper/tracker...", "Set up a tech changelog db separate from blogs db", "after blogs db is set up add a bunch of blogs...", "Add Dave Jorgensen to media center news list", "Add intcyberdigest to media center list...", "Set up YouTube channel sync with Notion DB" (rescoped: channels live in life-data; two-way subscription sync is the deferred task below), "Research which api ... TV Show new episodes", "Design TV show statuses to handle new seasons", "Figure out TV show status design...", "add a awaiting new season vs tv show over...", "Migrate TV Episodes to life-data", the YouTube Videos half of "Migrate Podcasts and YouTube Videos to life-data..." (edit its Name to "Migrate Podcasts to life-data with Spotify derivations" and leave it To Do).
+  * Canceled: "Build standalone iOS media center app with widgets", "Create youtube short form video Plugin", "Set up my youtube channels section and create separate statuses...", "Fill out all the views of the media center db...", "Add a plugin for reddit communities...", "Create a custom hook off of the TV episodes hook for when love is blind...", "Add all the insta accounts yt equivalents..." (infrabren/jtreezy69 rejected; kiidkatze handled in Task 9), "After yt channel is complete, add find these instagram guys' yt channels...".
+  * Leave To Do: "Track veritasium, summoning salt videos ... export my yt watching history" (rename to "Import YouTube watch history from Google Takeout into youtube\_videos"), "Find a way to see my in progress yt videos...", "Mark down every John Oliver episode watched in Episodes DB" (now a `tv_episodes` update, keep).
+  * Create (High, Chore, due today, Project = Media Center): "Media Center X source: scrape @intcyberdigest into articles from the mini's logged-in Chrome (separate plan)"; "YouTube subscriptions two-way sync with youtube\_channels.subscription (deferred)"; "Flighty newsletter as a Gmail-backed feeds source (deferred)". Create under the Notion Automations project: "After notion-automations reads life-data: when a Love Is Blind / The Ultimatum season is finished in tv\_episodes, create a task to read the season's online drama, Reddit threads and memes".
+  * Close this session's task (`3d503953-a8af-81e7-a4f8-cd2fc2c31d29`): Completed, `AI Completed`, `Completed Date`.
 
-- [ ] **Step 3: Catalog and memory.** In `projects-map` (agent-config `skills/projects-map/SKILL.md`): move Media Center to Active with the new one-liner ("Daily poller filling life-data media tables (episodes, YouTube, feeds) keyed by durable ids; `media_feed` view; Modal cron; vault `Media Center`"). Write a memory file `project_media_center.md` (type project) with the decisions, the follow list, the poller-writes-facts deviation, and the deferred items, and add its line to `MEMORY.md`. Commit and push agent-config.
+* [ ] **Step 3: Catalog and memory.** In `projects-map` (agent-config `skills/projects-map/SKILL.md`): move Media Center to Active with the new one-liner ("Daily poller filling life-data media tables (episodes, YouTube, feeds) keyed by durable ids; `media_feed` view; Modal cron; vault `Media Center`"). Write a memory file `project_media_center.md` (type project) with the decisions, the follow list, the poller-writes-facts deviation, and the deferred items, and add its line to `MEMORY.md`. Commit and push agent-config.
 
-- [ ] **Step 4: Final verification.** `life check` clean; `just logs` from the last cron shows all three sections; `SELECT count(*) FROM media_feed` > 0; media-center `git status` clean and pushed; Synapse and derivations CI green.
+* [ ] **Step 4: Final verification.** `life check` clean; `just logs` from the last cron shows all three sections; `SELECT count(*) FROM media_feed` > 0; media-center `git status` clean and pushed; Synapse and derivations CI green.
 
----
+***
 
 ## Self-review
 

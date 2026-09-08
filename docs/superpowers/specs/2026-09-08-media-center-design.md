@@ -18,32 +18,32 @@ decided against mobile notifications.
 
 ## Decisions (settled with the user, 2026-09-07/08)
 
-- Tables hold **everything** for every known show and channel, back catalog
+* Tables hold **everything** for every known show and channel, back catalog
   included, so a source followed later already has its history browsable.
   `follow` only decides what surfaces in the feed.
-- **TV**: every show in `tv_shows` gets its episodes, Gave Up included, so
+* **TV**: every show in `tv_shows` gets its episodes, Gave Up included, so
   watched/unwatched is logged per episode. All shows start `follow = 1`.
-- **YouTube**: all 149 channels from the Notion YouTube Channels DB are
+* **YouTube**: all 149 channels from the Notion YouTube Channels DB are
   ingested with `follow = 0`. Follow on for: Fireship, Dave Jorgenson,
   Veritasium, Last Week Tonight. kiidkatze's channel to be looked up. Rejected:
   ThePrimeagen, Dwarkesh Patel, Summoning Salt, infrabren, jtreezy69.
-- **Feeds** (all follow on): Cherri GitHub releases, Notion blog, Raycast
+* **Feeds** (all follow on): Cherri GitHub releases, Notion blog, Raycast
   blog, Waymo Waypoint blog, Home Assistant blog, Works with Home Assistant
   blog, Chrome what's-new, Flighty newsletter, MacStories, and the X account
   intcyberdigest.
-- **Podcasts**: no polling, no follows. Rows are captured manually (Synapse,
+* **Podcasts**: no polling, no follows. Rows are captured manually (Synapse,
   Spotify ids per the existing 2026-09-04 migration task). Life UI note: a
   podcast row in `Not Started` belongs in the to-watch section.
-- **Reddit** as a source: no.
-- **Reality-show wrap-up** (Love Is Blind, The Ultimatum): not here. Becomes a
+* **Reddit** as a source: no.
+* **Reality-show wrap-up** (Love Is Blind, The Ultimatum): not here. Becomes a
   notion-automations spec once that app reads life-data: finishing a season
   creates a task to read the season's online drama, Reddit threads and memes.
-- **Status vocabulary** unified across all media tables, taken from movies:
+* **Status vocabulary** unified across all media tables, taken from movies:
   `Priority`, `Not Started`, `In Progress`, `Finished`, `Watched Parts`,
-  `Gave Up`. tv_shows' `Watched Some` (6 rows) renames to `Watched Parts`.
-- Out of scope, permanently: push notifications, an iOS media app, short-form
+  `Gave Up`. tv\_shows' `Watched Some` (6 rows) renames to `Watched Parts`.
+* Out of scope, permanently: push notifications, an iOS media app, short-form
   video from TikTok/Instagram, Trakt, Apify.
-- Deferred, separate tasks: YouTube subscription two-way sync; watch-history
+* Deferred, separate tasks: YouTube subscription two-way sync; watch-history
   imports (Google Takeout, Netflix, HBO); newsletters via Gmail as a source
   kind if the Flighty newsletter has no web feed.
 
@@ -92,66 +92,66 @@ vocabulary, default `Not Started`), `date_watched` (date, nullable, meaning
 `note` (text), `published_at` (datetime, poller-written, the item's release time)
 plus the sync columns life-data adds.
 
-### youtube_channels - id = YouTube channel id (`UC...`)
+### youtube\_channels - id = YouTube channel id (`UC...`)
 
-| col | type | notes |
-|---|---|---|
-| follow | bool, default 0 | surfaces the channel's videos in the feed |
-| backfilled | bool, default 0 | poller flag: full back catalog ingested; daily runs read only the newest page afterwards |
-| title | text | from the YouTube API at seed / first sight |
-| handle | text | `@fireship` |
-| uploads_playlist_id | text | `UU...`, the Data API back-catalog handle |
-| channel_url | url | the URL as originally saved |
-| content_type, tags | JSON arrays | migrated from Notion Content Type / Tags |
-| subscription | select | migrated Notion Status: `Subscribed`, `Unsubscribed`, `To Watch`, `Never Subscribed`, `Legacy`. Informational until the deferred two-way sync |
-| notion_id | text | former Notion page id, dash-stripped |
+| col                   | type            | notes                                                                                                                                         |
+| --------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| follow                | bool, default 0 | surfaces the channel's videos in the feed                                                                                                     |
+| backfilled            | bool, default 0 | poller flag: full back catalog ingested; daily runs read only the newest page afterwards                                                      |
+| title                 | text            | from the YouTube API at seed / first sight                                                                                                    |
+| handle                | text            | `@fireship`                                                                                                                                   |
+| uploads\_playlist\_id | text            | `UU...`, the Data API back-catalog handle                                                                                                     |
+| channel\_url          | url             | the URL as originally saved                                                                                                                   |
+| content\_type, tags   | JSON arrays     | migrated from Notion Content Type / Tags                                                                                                      |
+| subscription          | select          | migrated Notion Status: `Subscribed`, `Unsubscribed`, `To Watch`, `Never Subscribed`, `Legacy`. Informational until the deferred two-way sync |
+| notion\_id            | text            | former Notion page id, dash-stripped                                                                                                          |
 
-### youtube_videos - id = 11-char YouTube video id
+### youtube\_videos - id = 11-char YouTube video id
 
-| col | type | notes |
-|---|---|---|
-| channel_id | ref -> youtube_channels | required |
-| title, duration_s, published_at, thumbnail_url | poller / Synapse written | from `playlistItems.list` / `videos.list` |
-| is_short | bool | duration <= 180s heuristic; feed filter only |
-| status, date_watched, tags, note | shared | Notion `To Watch` -> `Not Started`, `Watched` -> `Finished`, `Priority`/`In Progress` unchanged |
-| notion_id | text | migrated rows only |
+| col                                               | type                     | notes                                                                                           |
+| ------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------- |
+| channel\_id                                       | ref -> youtube\_channels | required                                                                                        |
+| title, duration\_s, published\_at, thumbnail\_url | poller / Synapse written | from `playlistItems.list` / `videos.list`                                                       |
+| is\_short                                         | bool                     | duration <= 180s heuristic; feed filter only                                                    |
+| status, date\_watched, tags, note                 | shared                   | Notion `To Watch` -> `Not Started`, `Watched` -> `Finished`, `Priority`/`In Progress` unchanged |
+| notion\_id                                        | text                     | migrated rows only                                                                              |
 
 ### feeds - id = the canonical feed or page URL
 
-| col | type | notes |
-|---|---|---|
-| kind | select, required | `blog`, `changelog`, `newsletter`, `x` |
-| follow | bool, default 1 | |
-| title | text | user-typed at seed time |
-| fetch | select, required | `rss`, `scrape:links`, `x` - how the poller reads it |
-| scrape_pattern | text, nullable | for `scrape:links`: regex an `<a href>` must match to count as an item |
+| col             | type             | notes                                                                  |
+| --------------- | ---------------- | ---------------------------------------------------------------------- |
+| kind            | select, required | `blog`, `changelog`, `newsletter`, `x`                                 |
+| follow          | bool, default 1  |                                                                        |
+| title           | text             | user-typed at seed time                                                |
+| fetch           | select, required | `rss`, `scrape:links`, `x` - how the poller reads it                   |
+| scrape\_pattern | text, nullable   | for `scrape:links`: regex an `<a href>` must match to count as an item |
 
 ### articles - id = canonical item URL (tracking params stripped, host lowercased)
 
-| col | type | notes |
-|---|---|---|
-| feed_id | ref -> feeds, nullable | null for manual saves |
-| title, published_at | text / datetime | from the feed entry or scraped link text |
-| status, date_read, tags, note | shared | Notion Articles `Done` -> `Finished`, `In progress` -> `In Progress` |
+| col                            | type                   | notes                                                                |
+| ------------------------------ | ---------------------- | -------------------------------------------------------------------- |
+| feed\_id                       | ref -> feeds, nullable | null for manual saves                                                |
+| title, published\_at           | text / datetime        | from the feed entry or scraped link text                             |
+| status, date\_read, tags, note | shared                 | Notion Articles `Done` -> `Finished`, `In progress` -> `In Progress` |
 
-### tv_shows - existing table, three additions
+### tv\_shows - existing table, three additions
 
-| col | type | notes |
-|---|---|---|
-| follow | bool, default 1 | feed surfacing; user flips off per show |
-| tmdb_status | text, derived `http:tmdb_tv` | `Returning Series`, `Ended`, ... - gates polling |
-| watch_providers | JSON, derived `http:tmdb_tv` from id | US flatrate services, the "where does it stream" answer |
+| col              | type                                 | notes                                                   |
+| ---------------- | ------------------------------------ | ------------------------------------------------------- |
+| follow           | bool, default 1                      | feed surfacing; user flips off per show                 |
+| tmdb\_status     | text, derived `http:tmdb_tv`         | `Returning Series`, `Ended`, ... - gates polling        |
+| watch\_providers | JSON, derived `http:tmdb_tv` from id | US flatrate services, the "where does it stream" answer |
 
 `Watched Some` -> `Watched Parts` on the 6 rows; catalog option list updated.
 
-### tv_episodes - id = TMDB episode id
+### tv\_episodes - id = TMDB episode id
 
-| col | type | notes |
-|---|---|---|
-| show_id | ref -> tv_shows, required | |
-| season, episode | int, required | inputs for derivation |
-| title, air_date, runtime_min | poller-written from the TMDB season listing | |
-| status, date_watched, note | shared | Notion TV Episodes rows import their watched marks |
+| col                            | type                                        | notes                                              |
+| ------------------------------ | ------------------------------------------- | -------------------------------------------------- |
+| show\_id                       | ref -> tv\_shows, required                  |                                                    |
+| season, episode                | int, required                               | inputs for derivation                              |
+| title, air\_date, runtime\_min | poller-written from the TMDB season listing |                                                    |
+| status, date\_watched, note    | shared                                      | Notion TV Episodes rows import their watched marks |
 
 Ingest rule: every episode of every show in `tv_shows`, regardless of the
 show's status.
@@ -159,8 +159,8 @@ show's status.
 ### The feed
 
 A SQL view, `media_feed`, unioning `(kind, id, title, source, published_at,
-status)` from youtube_videos (channel follow = 1), tv_episodes (show follow =
-1), articles (feed follow = 1), and (once the podcasts table exists) podcast rows in `Not Started`, restricted
+status)` from youtube\_videos (channel follow = 1), tv\_episodes (show follow =
+1\), articles (feed follow = 1), and (once the podcasts table exists) podcast rows in `Not Started`, restricted
 to `status IN ('Not Started', 'Priority')`, ordered by `published_at DESC`.
 Life UI's to-watch section is this view; an agent answers "what's new" with
 `SELECT * FROM media_feed LIMIT 50`.
@@ -186,7 +186,7 @@ failures are logged and skipped so one dead feed never blocks the run.
    are resolved when the rows are created, not guessed here.
 4. Each new item is pushed with `status = 'Not Started'` and a `provenance`
    edge `rel = 'imported_from'`, `from_kind` = the source kind, `from_ref`
-   = the source row id, `detail.created_row = 1`.
+   \= the source row id, `detail.created_row = 1`.
 5. Pushing an item that already exists touches nothing: the push sends only
    the columns the poller owns, and existing rows are skipped by id.
 
@@ -207,15 +207,15 @@ with no new endpoint and no new secret.
 
 ## Migration and cutover
 
-1. Create the tables, add the tv_shows columns, rename the 6 statuses,
+1. Create the tables, add the tv\_shows columns, rename the 6 statuses,
    document all of it in life-map.
-2. Import Notion YouTube Channels (149) -> youtube_channels, YouTube Videos
-   -> youtube_videos (channel resolved from the Notion relation or the video
-   itself), TV Episodes -> tv_episodes watched marks (the 2 linked shows),
+2. Import Notion YouTube Channels (149) -> youtube\_channels, YouTube Videos
+   -> youtube\_videos (channel resolved from the Notion relation or the video
+   itself), TV Episodes -> tv\_episodes watched marks (the 2 linked shows),
    Articles (8) -> articles. Podcasts stay with their own task.
 3. Seed `feeds` with the ten decided sources and flip the four channel
    follows on.
-4. Retarget Synapse's `youtube-videos` (hub_table) and `youtube-channels`
+4. Retarget Synapse's `youtube-videos` (hub\_table) and `youtube-channels`
    categories to life-data, same pattern as movies.
 5. First ingestion run: full TV episode backfill, full YouTube back catalog.
    Then the daily cron.
@@ -227,36 +227,36 @@ with no new endpoint and no new secret.
 
 ## Ops
 
-- media-center: fill the two `CHANGEME` fields in the Media Center vault
+* media-center: fill the two `CHANGEME` fields in the Media Center vault
   (Modal token id and secret), replace `NOTION_API_KEY`/`SOURCE_DBS` in the
   ENV item with `LIFE_HUB_URL`, `LIFE_HUB_TOKEN` (a `tables:write` token
   minted for this app), `TMDB_API_KEY`, `YOUTUBE_API_KEY`. Deploy = push to
   main, CI runs. Modal cron slot 3 of 5.
-- derivations: no new secret; deploy the tv endpoint change via its CI.
-- mini job: nix-config module for the X scraper, enabled after switch-mini.
+* derivations: no new secret; deploy the tv endpoint change via its CI.
+* mini job: nix-config module for the X scraper, enabled after switch-mini.
 
 ## Error handling
 
-- A source that fails is logged with its id and skipped; the run still
+* A source that fails is logged with its id and skipped; the run still
   completes and reports counts per kind.
-- A `tv_shows` derivation failure leaves the row underived; the hub retries
+* A `tv_shows` derivation failure leaves the row underived; the hub retries
   on its sweep. The poller never writes a derived column.
-- Duplicate pushes are idempotent by id. A re-run after a partial failure
+* Duplicate pushes are idempotent by id. A re-run after a partial failure
   is safe.
-- TMDB or YouTube quota exhaustion aborts that kind for the day, logged, and
+* TMDB or YouTube quota exhaustion aborts that kind for the day, logged, and
   the next run catches up because the cursor is "ids not yet present", not a
   timestamp.
 
 ## Testing
 
-- Unit: parsers against recorded fixtures (YouTube playlist items, TMDB season and
+* Unit: parsers against recorded fixtures (YouTube playlist items, TMDB season and
   providers responses, each scraper's saved HTML, feed samples). New-item
   detection given an existing-id set. URL canonicalisation cases.
-- Integration (marked, skipped in CI): one real fetch per source kind
+* Integration (marked, skipped in CI): one real fetch per source kind
   against a live endpoint.
-- Migration: row counts and a sampled diff between each Notion DB and its
+* Migration: row counts and a sampled diff between each Notion DB and its
   table; `life check` clean after import.
-- End to end: first cron run on Modal produces episode and video rows;
+* End to end: first cron run on Modal produces episode and video rows;
   `SELECT count(*) FROM media_feed` is non-zero; a Synapse YouTube capture
   lands in `youtube_videos` with its channel resolved.
 
@@ -271,3 +271,4 @@ with no new endpoint and no new secret.
 7. The system shall never write a hub-derived column (`tv_shows.tmdb_status`, `tv_shows.watch_providers`) from the poller.
 8. Where a page has no feed, the system shall use the generic link scraper with the row's `scrape_pattern`, tested against a recorded fixture.
 9. The feed view shall order items by `published_at` descending and include only rows in `Not Started` or `Priority`.
+
