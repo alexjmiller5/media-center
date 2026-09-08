@@ -2,20 +2,20 @@
 
 media-center: a daily poller that ingests TV episodes (TMDB), YouTube
 uploads (YouTube Data API) and blog/feed articles (RSS + link scraping)
-into Alex's life-data hub. No frontend, no webhook — life-data (and
+into Alex's life-data hub. No frontend, no webhook - life-data (and
 whatever reads it) is the UI. Python service deployed on Modal as a single
 cron job.
 
 ## Architecture rule (the one that matters)
 
 **Business logic lives in `src/core/` as plain Python with NO Modal imports.**
-Only `app.py` imports `modal` — it is the deployment shim (image, secrets,
+Only `app.py` imports `modal` - it is the deployment shim (image, secrets,
 cron schedule). This keeps the logic portable: the same `core` package runs
 in tests or on any future platform.
 
-- No HTTP endpoints — nothing calls this app; the only trigger is the daily
+- No HTTP endpoints - nothing calls this app; the only trigger is the daily
   cron (`app.py`'s `daily` function), plus `just run` for an on-demand run.
-- Cron: Modal is the PREFERRED home for schedules — but the Starter plan
+- Cron: Modal is the PREFERRED home for schedules - but the Starter plan
   allows **5 deployed crons across ALL apps**, so track the budget. Overflow
   goes to GHA cron or CF Cron Triggers (see the `infra` skill).
 
@@ -39,32 +39,32 @@ Instantiate `Settings()` inside functions, never at import time.
 
 | Module | Purpose |
 |---|---|
-| `core/config.py` | `Settings` — the four env vars above |
+| `core/config.py` | `Settings` - the four env vars above |
 | `core/hub.py` | `HubClient` (`pull`/`push` against the life-data hub), `imported_from` (provenance edge), `now_iso` |
 | `core/tmdb.py` | TMDB show/season lookups -> `tv_episodes` rows |
 | `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows |
 | `core/feeds.py` | RSS parsing + generic link scraping -> `articles` rows |
 | `core/watcher.py` | `Entry` + `parse_feed` (feedparser wrapper), shared by `feeds.py` |
-| `core/pipeline.py` | `sync_tv`, `sync_youtube`, `sync_feeds`, `run_daily` — wires the above into one ingestion pass |
+| `core/pipeline.py` | `sync_tv`, `sync_youtube`, `sync_feeds`, `run_daily` - wires the above into one ingestion pass |
 
 ## Rules the poller follows
 
 - **The poller writes source facts; never a derived column.** Anything the
   hub or a downstream consumer computes (e.g. `tv_shows.tmdb_status`,
-  `tv_shows.watch_providers`) is out of scope — this service only pushes the
+  `tv_shows.watch_providers`) is out of scope - this service only pushes the
   columns it owns (episode/video/article rows) and never touches those.
 - **New-item detection is "id not yet in the table"**, checked against the
-  hub's actual pulled state at the start of each sync — not an in-run
+  hub's actual pulled state at the start of each sync - not an in-run
   accumulator. A partial or repeated run is always safe.
 - Every pushed row gets `status = "Not Started"`; every new item also gets a
   `provenance` row (`rel = "imported_from"`) via `core.hub.imported_from`.
-- A `feeds` row with `fetch = "x"` is skipped — X/Twitter scraping is a
+- A `feeds` row with `fetch = "x"` is skipped - X/Twitter scraping is a
   separate mac-mini job, not this poller's job.
 - It never sends notifications.
 
 ## Commands
 
-Standard verb set (see global AGENTS.md) — the justfile is the interface,
+Standard verb set (see global AGENTS.md) - the justfile is the interface,
 not a script catalog; one-offs go in `scripts/` and run directly.
 
 | Command | Purpose |
@@ -85,4 +85,4 @@ functions stay thin enough to not need tests.
 This service reads `tv_shows`, `youtube_channels` and `feeds` (the
 follow/tracking lists) and writes `tv_episodes`, `youtube_videos`,
 `articles` and `provenance`. Table schemas and conventions are documented in
-the `life-map` skill — read it before adding a column or a new source table.
+the `life-map` skill - read it before adding a column or a new source table.
