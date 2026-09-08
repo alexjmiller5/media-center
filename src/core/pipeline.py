@@ -17,9 +17,13 @@ CHUNK = 200
 ACTIVE_TMDB = {"Returning Series", "In Production", "Planned", "Pilot", None}
 
 
-def _push_chunked(hub, table, rows):
+def _push_chunked(hub, table, rows) -> list[dict]:
+    rejected = []
     for i in range(0, len(rows), CHUNK):
-        hub.push(table, rows[i : i + CHUNK])
+        rejected += hub.push(table, rows[i : i + CHUNK])["rejected"]
+    if rejected:
+        log.warning("rows_rejected", table=table, n=len(rejected), first=rejected[0])
+    return rejected
 
 
 def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
@@ -27,7 +31,7 @@ def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
     known = {}
     for e in hub.pull("tv_episodes", ["id", "show_id"]):
         known.setdefault(e["show_id"], set()).add(e["id"])
-    out = {"shows": len(shows), "episodes": 0, "failed": 0}
+    out = {"shows": len(shows), "episodes": 0, "failed": 0, "rejected": 0}
     for s in shows:
         have = known.get(s["id"], set())
         if have and s.get("tmdb_status") not in ACTIVE_TMDB:
@@ -41,14 +45,17 @@ def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
                     for r in tmdb.episode_rows(s["id"], tmdb.season_episodes(s["id"], n, key, http))
                     if r["id"] not in have
                 ]
-            _push_chunked(hub, "tv_episodes", rows)
+            rejected = _push_chunked(hub, "tv_episodes", rows)
+            bad_ids = {r["id"] for r in rejected}
+            accepted = [r for r in rows if r["id"] not in bad_ids]
             _push_chunked(
                 hub,
                 "provenance",
-                [imported_from("tv_shows", s["id"], "tv_episodes", r["id"]) for r in rows],
+                [imported_from("tv_shows", s["id"], "tv_episodes", r["id"]) for r in accepted],
             )
-            out["episodes"] += len(rows)
-            log.info("tv_synced", show=s["id"], new=len(rows))
+            out["episodes"] += len(accepted)
+            out["rejected"] += len(rejected)
+            log.info("tv_synced", show=s["id"], new=len(accepted))
         except Exception:
             out["failed"] += 1
             log.exception("tv_failed", show=s["id"])
@@ -58,7 +65,7 @@ def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
 def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
     channels = hub.pull("youtube_channels", ["id", "uploads_playlist_id", "backfilled"])
     known = {v["id"] for v in hub.pull("youtube_videos", ["id"])}
-    out = {"channels": len(channels), "videos": 0, "failed": 0}
+    out = {"channels": len(channels), "videos": 0, "failed": 0, "rejected": 0}
     for c in channels:
         try:
             vids = youtube.uploads(
@@ -67,22 +74,28 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
             vids = [v for v in vids if v["id"] not in known]
             durs = youtube.durations([v["id"] for v in vids], key, http) if vids else {}
             rows = youtube.video_rows(c["id"], vids, durs)
-            _push_chunked(hub, "youtube_videos", rows)
+            rejected = _push_chunked(hub, "youtube_videos", rows)
+            bad_ids = {r["id"] for r in rejected}
+            accepted = [r for r in rows if r["id"] not in bad_ids]
             _push_chunked(
                 hub,
                 "provenance",
                 [
                     imported_from("youtube_channels", c["id"], "youtube_videos", r["id"])
-                    for r in rows
+                    for r in accepted
                 ],
             )
-            if not c.get("backfilled"):
+            if not c.get("backfilled") and not rejected:
                 hub.push(
                     "youtube_channels", [{"id": c["id"], "backfilled": 1, "updated_at": now_iso()}]
                 )
-            out["videos"] += len(rows)
+            out["videos"] += len(accepted)
+            out["rejected"] += len(rejected)
             log.info(
-                "youtube_synced", channel=c["id"], new=len(rows), backfill=not c.get("backfilled")
+                "youtube_synced",
+                channel=c["id"],
+                new=len(accepted),
+                backfill=not c.get("backfilled"),
             )
         except Exception:
             out["failed"] += 1
@@ -97,7 +110,7 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
         if f.get("follow") and f["fetch"] != "x"
     ]
     known = {a["id"] for a in hub.pull("articles", ["id"])}
-    out = {"feeds": len(rows), "articles": 0, "failed": 0}
+    out = {"feeds": len(rows), "articles": 0, "failed": 0, "rejected": 0}
     for f in rows:
         try:
             items = [
@@ -105,15 +118,18 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
                 for r in feeds_mod.article_rows(f["id"], feeds_mod.entries(f, http))
                 if r["id"] not in known
             ]
-            _push_chunked(hub, "articles", items)
+            rejected = _push_chunked(hub, "articles", items)
+            bad_ids = {r["id"] for r in rejected}
+            accepted = [r for r in items if r["id"] not in bad_ids]
             _push_chunked(
                 hub,
                 "provenance",
-                [imported_from("feeds", f["id"], "articles", r["id"]) for r in items],
+                [imported_from("feeds", f["id"], "articles", r["id"]) for r in accepted],
             )
             known.update(r["id"] for r in items)
-            out["articles"] += len(items)
-            log.info("feed_synced", feed=f["id"], new=len(items))
+            out["articles"] += len(accepted)
+            out["rejected"] += len(rejected)
+            log.info("feed_synced", feed=f["id"], new=len(accepted))
         except Exception:
             out["failed"] += 1
             log.exception("feed_failed", feed=f["id"])

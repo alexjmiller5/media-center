@@ -4,6 +4,7 @@ resolution. No Modal imports. Per-channel RSS is deliberately not used: it
 404s for some channels the API serves fine."""
 
 import re
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -18,6 +19,15 @@ _DUR = re.compile(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
 def parse_iso8601_duration(s: str) -> int:
     d, h, m, sec = (int(x or 0) for x in _DUR.fullmatch(s).groups())
     return d * 86400 + h * 3600 + m * 60 + sec
+
+
+def to_hub_datetime(value: str | None) -> str | None:
+    """Normalize any ISO-8601 UTC timestamp YouTube emits (seconds-only,
+    fractional, or +00:00 offset) into the hub's millisecond ISO-8601 form."""
+    if not value:
+        return None
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
 
 
 def uploads(
@@ -106,7 +116,7 @@ def video_rows(channel_id: str, videos: list[dict], durations: dict[str, int]) -
                 "id": v["id"],
                 "channel_id": channel_id,
                 "title": v["title"],
-                "published_at": v.get("published_at"),
+                "published_at": to_hub_datetime(v.get("published_at")),
                 "duration_s": d,
                 "thumbnail_url": f"https://i.ytimg.com/vi/{v['id']}/hqdefault.jpg",
                 "is_short": 1 if d is not None and d <= SHORT_MAX_S else 0,

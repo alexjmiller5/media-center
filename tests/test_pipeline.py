@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import httpx
+import structlog.testing
 
 from core import pipeline
 
@@ -9,16 +10,19 @@ FIX = Path(__file__).parent / "fixtures"
 
 
 class FakeHub:
-    def __init__(self, tables):
+    def __init__(self, tables, reject=None):
         self.tables = tables  # table -> list[dict]
         self.pushed = {}  # table -> list[dict]
+        self.reject = reject  # optional (table, row) -> dict | None
 
     def pull(self, table, columns):
         return [{c: r.get(c) for c in columns} for r in self.tables.get(table, [])]
 
     def push(self, table, rows):
         self.pushed.setdefault(table, []).extend(rows)
-        return {"upserted": len(rows), "rejected": []}
+        rejected = [self.reject(table, r) for r in rows] if self.reject else []
+        rejected = [r for r in rejected if r]
+        return {"upserted": len(rows) - len(rejected), "rejected": rejected}
 
 
 def http_for(table):
@@ -92,7 +96,7 @@ def test_sync_tv_skips_ended_shows_that_already_have_episodes():
     )
     http = http_for([])  # any request would 404 -> failure
     out = pipeline.sync_tv(hub, http, "KEY")
-    assert out == {"shows": 1, "episodes": 0, "failed": 0}
+    assert out == {"shows": 1, "episodes": 0, "failed": 0, "rejected": 0}
     assert "tv_episodes" not in hub.pushed
 
 
@@ -113,6 +117,60 @@ def test_sync_tv_survives_one_broken_show():
     )
     out = pipeline.sync_tv(hub, http, "KEY")
     assert out["failed"] == 1 and out["episodes"] == 3
+
+
+def test_sync_tv_rejected_episode_excluded_from_count_and_provenance():
+    season = fx("tmdb_season.json")
+    bad_id = str(season["episodes"][0]["id"])
+
+    def reject(table, row):
+        if table == "tv_episodes" and row["id"] == bad_id:
+            return {"id": bad_id, "col": "air_date", "rule": "iso8601_ms", "message": "bad"}
+        return None
+
+    hub = FakeHub(
+        {
+            "tv_shows": [{"id": "76479", "tmdb_status": "Returning Series"}],
+            "tv_episodes": [],
+        },
+        reject=reject,
+    )
+    show = {**fx("tmdb_tv.json"), "seasons": [{"season_number": 1}]}
+    http = http_for([("/tv/76479/season/1", season), ("/tv/76479?", show)])
+    out = pipeline.sync_tv(hub, http, "KEY")
+    assert out["episodes"] == len(season["episodes"]) - 1
+    assert out["rejected"] == 1
+    prov_refs = {p["to_ref"] for p in hub.pushed["provenance"]}
+    assert bad_id not in prov_refs
+
+
+def test_sync_tv_rejected_provenance_row_is_warned_but_episode_still_accepted():
+    season = fx("tmdb_season.json")
+    ep_id = str(season["episodes"][0]["id"])
+
+    def reject(table, row):
+        if table == "provenance" and row["to_ref"] == ep_id:
+            return {"id": row["id"], "col": "detail", "rule": "json", "message": "bad"}
+        return None
+
+    hub = FakeHub(
+        {
+            "tv_shows": [{"id": "76479", "tmdb_status": "Returning Series"}],
+            "tv_episodes": [],
+        },
+        reject=reject,
+    )
+    show = {**fx("tmdb_tv.json"), "seasons": [{"season_number": 1}]}
+    http = http_for([("/tv/76479/season/1", season), ("/tv/76479?", show)])
+    with structlog.testing.capture_logs() as logs:
+        out = pipeline.sync_tv(hub, http, "KEY")
+    assert out["episodes"] == len(season["episodes"])  # provenance rejection doesn't uncount it
+    assert out["rejected"] == 0  # scoped to the primary table, not provenance
+    warnings = [
+        log for log in logs if log["log_level"] == "warning" and log["event"] == "rows_rejected"
+    ]
+    assert len(warnings) == 1
+    assert warnings[0]["table"] == "provenance" and warnings[0]["n"] == 1
 
 
 def test_sync_youtube_first_page_for_backfilled_channels_and_all_pages_for_new_ones():
@@ -172,6 +230,40 @@ def test_sync_youtube_skips_known_video_ids():
     assert out["videos"] == len(page["items"]) - 1
 
 
+def test_sync_youtube_all_rejected_not_marked_backfilled_and_no_provenance():
+    page = fx("playlist_items.json")
+    last = {**page, "items": page["items"][:1]}
+    last.pop("nextPageToken", None)
+
+    def handler(request):
+        url = str(request.url)
+        if "/videos?" in url:
+            return httpx.Response(200, json=fx("videos_list.json"))
+        if "pageToken=" in url:
+            return httpx.Response(200, json=last)
+        return httpx.Response(200, json=page)
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+
+    def reject(table, row):
+        if table == "youtube_videos":
+            return {"id": row["id"], "col": "published_at", "rule": "iso8601_ms", "message": "bad"}
+        return None
+
+    hub = FakeHub(
+        {
+            "youtube_channels": [{"id": "UCnew", "uploads_playlist_id": "UUnew", "backfilled": 0}],
+            "youtube_videos": [],
+        },
+        reject=reject,
+    )
+    out = pipeline.sync_youtube(hub, http, "KEY")
+    assert out["videos"] == 0
+    assert out["rejected"] == len(page["items"]) + 1
+    assert hub.pushed.get("provenance", []) == []
+    assert not any(r.get("backfilled") for r in hub.pushed.get("youtube_channels", []))
+
+
 def test_sync_feeds_pushes_new_articles_for_followed_feeds_only():
     hub = FakeHub(
         {
@@ -200,7 +292,7 @@ def test_sync_feeds_pushes_new_articles_for_followed_feeds_only():
     )
     http = http_for([("blog.example.com/rss", (FIX / "rss2.xml").read_text())])
     out = pipeline.sync_feeds(hub, http)
-    assert out == {"feeds": 1, "articles": 2, "failed": 0}
+    assert out == {"feeds": 1, "articles": 2, "failed": 0, "rejected": 0}
     assert {r["id"] for r in hub.pushed["articles"]} == {
         "https://blog.example.com/first",
         "https://blog.example.com/second",
