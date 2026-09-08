@@ -5,3 +5,5 @@ __pycache__/
 .env
 .env.resolved
 *.local
+
+.DS_Store
