@@ -31,7 +31,7 @@ Instantiate `Settings()` inside functions, never at import time.
 | Var | Purpose |
 |---|---|
 | `LIFE_HUB_URL` | Base URL of the life-data hub API |
-| `LIFE_HUB_TOKEN` | Bearer token, scoped `tables:write` on the tables below |
+| `LIFE_HUB_TOKEN` | Bearer token, scoped `tables:read,tables:write` on the tables below (a write-only token cannot pull) |
 | `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) |
 
@@ -87,5 +87,6 @@ functions stay thin enough to not need tests.
 
 This service reads `tv_shows`, `youtube_channels` and `feeds` (the
 follow/tracking lists) and writes `tv_episodes`, `youtube_videos`,
-`articles` and `provenance`. Table schemas and conventions are documented in
+`articles` and `provenance`, plus the one flag it owns on a follow list:
+`youtube_channels.backfilled`. Table schemas and conventions are documented in
 the `life-map` skill - read it before adding a column or a new source table.

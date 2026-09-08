@@ -1,6 +1,6 @@
 """RSS/Atom feed parsing.
 
-Plain Python, no Modal/Notion imports — feedparser does the format handling
+Plain Python, no Modal imports - feedparser does the format handling
 (RSS 2.0, Atom, GitHub releases.atom all come out the same shape).
 """
 

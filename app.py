@@ -37,8 +37,8 @@ def _run() -> dict:
 
 # Cron slot 3 of the Starter plan's 5 (birthday-reminders, notion-automations
 # hold the other two). 09:30 UTC daily; the first run backfills every channel
-# and show, hence the long timeout.
-@app.function(image=image, secrets=secrets, schedule=modal.Cron("30 9 * * *"), timeout=3600)
+# and show, which exceeds an hour - hence the 6h timeout.
+@app.function(image=image, secrets=secrets, schedule=modal.Cron("30 9 * * *"), timeout=21600)
 def daily() -> dict:
     return _run()
 

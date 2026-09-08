@@ -26,9 +26,10 @@ justfile          test / check / fmt / logs / sync-secrets / deploy / run
 op-project-bootstrap .env.tpl --repo <owner>/<repo>
 ```
 
-Then mint a hub token scoped `tables:write` on `tv_episodes`,
-`youtube_videos`, `articles` and `provenance` (and read access on
-`tv_shows`, `youtube_channels`, `feeds`), and put it in the
+Then mint a hub token scoped `tables:read,tables:write` on
+`tv_episodes`, `youtube_videos`, `articles`, `provenance` and
+`youtube_channels` (a `tables:write`-only token cannot pull), plus read on
+`tv_shows` and `feeds`, and put it in the
 `LIFE_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
 `LIFE_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`.
 
