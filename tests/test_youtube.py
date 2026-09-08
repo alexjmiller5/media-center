@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import httpx
+from media_fields import parse_iso8601_duration
 
 from core import youtube
 
@@ -69,13 +70,7 @@ def test_durations_batches_by_50_and_parses_iso():
     out = youtube.durations(ids, "KEY", http)
     assert len(calls) == 3
     real = payload["items"][0]
-    assert out[real["id"]] == youtube.parse_iso8601_duration(real["contentDetails"]["duration"])
-
-
-def test_parse_iso8601_duration():
-    assert youtube.parse_iso8601_duration("PT1H2M3S") == 3723
-    assert youtube.parse_iso8601_duration("PT45S") == 45
-    assert youtube.parse_iso8601_duration("P1DT1S") == 86401
+    assert out[real["id"]] == parse_iso8601_duration(real["contentDetails"]["duration"])
 
 
 def test_resolve_channel_by_handle_and_by_id():
@@ -138,12 +133,3 @@ def test_video_rows_shape_and_short_flag():
         ]
         == 0
     )
-
-
-def test_to_hub_datetime_normalizes_youtube_timestamps():
-    assert youtube.to_hub_datetime("2009-10-25T06:57:33Z") == "2009-10-25T06:57:33.000Z"
-    assert youtube.to_hub_datetime("2026-09-07T17:24:51.5Z") == "2026-09-07T17:24:51.500Z"
-    assert youtube.to_hub_datetime("2026-09-07T17:24:51+00:00") == "2026-09-07T17:24:51.000Z"
-    assert youtube.to_hub_datetime("2026-09-07T17:24:51+05:00") == "2026-09-07T12:24:51.000Z"
-    assert youtube.to_hub_datetime(None) is None
-    assert youtube.to_hub_datetime("") is None
