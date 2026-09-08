@@ -61,6 +61,9 @@ Instantiate `Settings()` inside functions, never at import time.
 - A `feeds` row with `fetch = "x"` is skipped - X/Twitter scraping is a
   separate mac-mini job, not this poller's job.
 - It never sends notifications.
+- Datetimes pushed to the hub are millisecond ISO-8601 (`to_hub_datetime` in
+  `core/youtube.py`), and a rejected row (the hub's `push` `rejected` list)
+  is counted, logged and never marked as ingested.
 
 ## Commands
 

@@ -131,9 +131,19 @@ def test_video_rows_shape_and_short_flag():
     assert r["duration_s"] == 90 and r["is_short"] == 1
     assert r["thumbnail_url"] == "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg"
     assert r["status"] == "Not Started" and r["updated_at"].endswith("Z")
+    assert r["published_at"] == "2026-01-01T00:00:00.000Z"
     assert (
         youtube.video_rows("UC1", [{"id": "x", "title": "T", "published_at": None}], {})[0][
             "is_short"
         ]
         == 0
     )
+
+
+def test_to_hub_datetime_normalizes_youtube_timestamps():
+    assert youtube.to_hub_datetime("2009-10-25T06:57:33Z") == "2009-10-25T06:57:33.000Z"
+    assert youtube.to_hub_datetime("2026-09-07T17:24:51.5Z") == "2026-09-07T17:24:51.500Z"
+    assert youtube.to_hub_datetime("2026-09-07T17:24:51+00:00") == "2026-09-07T17:24:51.000Z"
+    assert youtube.to_hub_datetime("2026-09-07T17:24:51+05:00") == "2026-09-07T12:24:51.000Z"
+    assert youtube.to_hub_datetime(None) is None
+    assert youtube.to_hub_datetime("") is None
