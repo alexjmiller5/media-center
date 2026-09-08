@@ -1,5 +1,5 @@
 [project]
-name = "my-media-center"
+name = "media-center"
 version = "0.1.0"
 description = "Headless pollers that watch media sources (RSS blogs, tech changelogs, later Trakt/YouTube) and push updates into Notion"
 requires-python = ">=3.13"

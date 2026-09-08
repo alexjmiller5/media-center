@@ -25,10 +25,10 @@ jobs:
         with:
           export-env: true
         env:
-          MODAL_TOKEN_ID: op://MediaCenter/MediaCenter CI Modal Token/token-id
-          MODAL_TOKEN_SECRET: op://MediaCenter/MediaCenter CI Modal Token/token-secret
+          MODAL_TOKEN_ID: op://Media Center/Media Center CI Modal Token/token-id
+          MODAL_TOKEN_SECRET: op://Media Center/Media Center CI Modal Token/token-secret
       - run: uv run pytest -m "not integration"
       # Secrets must exist BEFORE deploy — app.py references modal.Secret.from_name.
       - name: Push app secrets to Modal
-        run: op inject -i .env.tpl | uv run scripts/sync_secrets.py my-media-center
+        run: op inject -i .env.tpl | uv run scripts/sync_secrets.py media-center
       - run: uv run modal deploy app.py

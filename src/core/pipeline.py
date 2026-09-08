@@ -32,7 +32,7 @@ def poll_all_sources(
         notion = notion or NotionClient(settings.notion_api_key)
         source_dbs = source_dbs or settings.source_dbs
     http = http or httpx.Client(
-        timeout=30, follow_redirects=True, headers={"User-Agent": "my-media-center/0.1"}
+        timeout=30, follow_redirects=True, headers={"User-Agent": "media-center/0.1"}
     )
     checked = created = 0
     for db in source_dbs:
