@@ -1,6 +1,6 @@
 # AGENTS.md
 
-my-media-center: headless pollers (RSS blog/changelog watcher now; Trakt +
+media-center: headless pollers (RSS blog/changelog watcher now; Trakt +
 YouTube sync later) that push updates into Alex's Notion DBs. Notion is the
 UI — no frontend here. Python service deployed on Modal: HTTP webhook +
 spawned background workers + cron.
@@ -69,7 +69,7 @@ sign-off — see the ASSUMPTION comment in `app.py`.
 
 ## Setup status
 
-1Password vault (`MediaCenter`) + CI service account do not exist yet — see
+1Password vault (`Media Center`) + CI service account do not exist yet — see
 "Manual setup" in README.md. Until then `just sync-secrets`,
 `just deploy`, and CI deploys will fail on the op:// references.
 

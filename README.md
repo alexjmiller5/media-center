@@ -1,4 +1,4 @@
-# my-media-center
+# media-center
 
 Headless pollers that watch media sources — RSS blogs, tech changelogs, later
 Trakt (TV) and YouTube — and push updates into Notion. Notion is the UI; this
@@ -27,18 +27,18 @@ account cannot create vaults):
 
 ```bash
 # 1. Project vault + read-only CI service account
-op vault create "MediaCenter"
-OUT=$(op service-account create "my-media-center-ci" --vault "MediaCenter:read_items" --format json </dev/null)
-op item create --category "API Credential" --title "MediaCenter CI op Service Account Token" --vault "<your vault>" "token[concealed]=$(echo "$OUT" | jq -r .token)" </dev/null
+op vault create "Media Center"
+OUT=$(op service-account create "media-center-ci" --vault "Media Center:read_items" --format json </dev/null)
+op item create --category "API Credential" --title "Media Center CI op Service Account Token" --vault "<your vault>" "token[concealed]=$(echo "$OUT" | jq -r .token)" </dev/null
 
 # 2. Credentials the app consumes (items referenced by .env.tpl / deploy.yml)
-op item create --category "API Credential" --title "MediaCenter Notion API Key" --vault MediaCenter \
+op item create --category "API Credential" --title "Media Center Notion API Key" --vault Media Center \
     "credential[concealed]=<your Notion integration secret>" \
     "source dbs[text]=<comma-separated data_source IDs of your source DBs>"
-op item create --category "API Credential" --title "MediaCenter CI Modal Token" --vault MediaCenter "token-id[concealed]=<id>" "token-secret[concealed]=<secret>"
+op item create --category "API Credential" --title "Media Center CI Modal Token" --vault Media Center "token-id[concealed]=<id>" "token-secret[concealed]=<secret>"
 
 # 3. CI bootstrap (the single GH secret)
-gh secret set OP_SERVICE_ACCOUNT_TOKEN --repo <owner>/<repo> --body "$(op read 'op://<your vault>/MediaCenter CI op Service Account Token/token')"
+gh secret set OP_SERVICE_ACCOUNT_TOKEN --repo <owner>/<repo> --body "$(op read 'op://<your vault>/Media Center CI op Service Account Token/token')"
 ```
 
 Other one-time steps that cannot be codified:

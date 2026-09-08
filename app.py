@@ -7,7 +7,7 @@ only maps that logic onto Modal: image, secrets, endpoints, schedules.
 
 import modal
 
-APP_NAME = "my-media-center"  # also the Modal secret name (see justfile sync-secrets)
+APP_NAME = "media-center"  # also the Modal secret name (see justfile sync-secrets)
 
 app = modal.App(APP_NAME)
 

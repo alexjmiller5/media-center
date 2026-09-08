@@ -1,9 +1,6 @@
 # Canonical secrets manifest — 1Password secret references only, SAFE to commit.
+# Refs are BY NAME on purpose: op-project-bootstrap parses this file.
 # Local dev:       op run --env-file=.env.tpl -- <cmd>   (see justfile)
 # Push to Modal:   just sync-secrets
-#
-# One line per secret. Reference syntax (no spaces):
-#   VAR_NAME=op :// vault / item / field   <- remove the spaces; spelled out
-#   because a literal reference in a comment breaks `op inject`.
-NOTION_API_KEY=op://MediaCenter/MediaCenter Notion API Key/credential
-SOURCE_DBS=op://MediaCenter/MediaCenter Notion API Key/source dbs
+NOTION_API_KEY=op://Media Center/Media Center ENV/NOTION_API_KEY
+SOURCE_DBS=op://Media Center/Media Center ENV/SOURCE_DBS
