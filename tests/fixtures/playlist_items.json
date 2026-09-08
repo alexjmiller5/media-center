@@ -1,0 +1,152 @@
+{
+  "kind": "youtube#playlistItemListResponse",
+  "etag": "lexUQ_mW-eriOeTmZhH-GSEq3-8",
+  "nextPageToken": "EAAaHlBUOkNBTWlFRVpGTWpBMFJURXpOalJGTlRNd016WQ",
+  "items": [
+    {
+      "kind": "youtube#playlistItem",
+      "etag": "qAwgQ4GQpvNjPJaOtIw7Q0DkYq4",
+      "id": "VVVIbnlmTXFpUlJHMXUtMk1zU1FMYlhBLm9SOTRjaWNPN3hN",
+      "snippet": {
+        "publishedAt": "2026-09-06T13:00:26Z",
+        "channelId": "UCHnyfMqiRRG1u-2MsSQLbXA",
+        "title": "The Most Dangerous Escalator In Europe",
+        "description": "In 2018 football fans were leaving a stadium in Rome. They boarded an escalator down to the metro. Suddenly the machine sprung a fault.\n\nMultiple safety systems were triggered. One after another. And then the final line failed.\n\nThis is why.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/oR94cicO7xM/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/oR94cicO7xM/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/oR94cicO7xM/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/oR94cicO7xM/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/oR94cicO7xM/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "Veritasium",
+        "playlistId": "UUHnyfMqiRRG1u-2MsSQLbXA",
+        "position": 0,
+        "resourceId": {
+          "kind": "youtube#video",
+          "videoId": "oR94cicO7xM"
+        },
+        "videoOwnerChannelTitle": "Veritasium",
+        "videoOwnerChannelId": "UCHnyfMqiRRG1u-2MsSQLbXA"
+      }
+    },
+    {
+      "kind": "youtube#playlistItem",
+      "etag": "qG4cY-UsMbnInfa9q04h8tUc-5M",
+      "id": "VVVIbnlmTXFpUlJHMXUtMk1zU1FMYlhBLkY1X0cwQUhmWWhJ",
+      "snippet": {
+        "publishedAt": "2026-09-02T13:00:04Z",
+        "channelId": "UCHnyfMqiRRG1u-2MsSQLbXA",
+        "title": "A Physics Professor Bet Me $10,000 I'm Wrong...",
+        "description": "A UCLA Physics Professor bet me $10,000 that my video (https://youtu.be/jyQwgBAaBag) about going downwind faster than the wind was wrong.\n\nHere's how we proved it...",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/F5_G0AHfYhI/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/F5_G0AHfYhI/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/F5_G0AHfYhI/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/F5_G0AHfYhI/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/F5_G0AHfYhI/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "Veritasium",
+        "playlistId": "UUHnyfMqiRRG1u-2MsSQLbXA",
+        "position": 1,
+        "resourceId": {
+          "kind": "youtube#video",
+          "videoId": "F5_G0AHfYhI"
+        },
+        "videoOwnerChannelTitle": "Veritasium",
+        "videoOwnerChannelId": "UCHnyfMqiRRG1u-2MsSQLbXA"
+      }
+    },
+    {
+      "kind": "youtube#playlistItem",
+      "etag": "g_isR-wTZhMAqXQpdKCfUtEEkOk",
+      "id": "VVVIbnlmTXFpUlJHMXUtMk1zU1FMYlhBLmIzS3BGZGIxcFc4",
+      "snippet": {
+        "publishedAt": "2026-08-26T15:00:02Z",
+        "channelId": "UCHnyfMqiRRG1u-2MsSQLbXA",
+        "title": "We Took $10,000 From @mkbhd's Locked iPhone",
+        "description": "There's a flaw in some virtual wallets.\n\nWe exploited this flaw to steal $10,000 from @mkbhd.\n\nWatch the full video to find out how we did it...",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/b3KpFdb1pW8/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/b3KpFdb1pW8/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/b3KpFdb1pW8/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/b3KpFdb1pW8/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/b3KpFdb1pW8/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "Veritasium",
+        "playlistId": "UUHnyfMqiRRG1u-2MsSQLbXA",
+        "position": 2,
+        "resourceId": {
+          "kind": "youtube#video",
+          "videoId": "b3KpFdb1pW8"
+        },
+        "videoOwnerChannelTitle": "Veritasium",
+        "videoOwnerChannelId": "UCHnyfMqiRRG1u-2MsSQLbXA"
+      }
+    }
+  ],
+  "pageInfo": {
+    "totalResults": 532,
+    "resultsPerPage": 3
+  }
+}
