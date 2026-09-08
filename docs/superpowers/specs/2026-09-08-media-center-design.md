@@ -54,13 +54,12 @@ decided against mobile notifications.
                                    ^ rows/push (tables:write token)
                                    |
   media-center (Modal, daily cron) -+-- TMDB       (episodes, air dates, watch providers)
-                                    +-- YouTube    (RSS per channel daily; Data API for back catalog)
+                                    +-- YouTube    (Data API uploads playlist: first page daily, all pages on first sight)
                                     +-- RSS/Atom   (feeds table)
                                     +-- scrapers   (pages with no feed)
   media-center-x (mac mini launchd) ---- x.com via logged-in Chrome  -> same articles table
 
-  derivations (Modal) gains: youtube_video, youtube_channel, tmdb_episode,
-                             tmdb_tv_providers, article_meta
+  derivations (Modal): the tv endpoint also returns tmdb_status + watch_providers
   Synapse: youtube-videos and youtube-channels categories retarget to life-data
   Readers: `life sql` (agents) now; Life UI later. The feed is a SQL view.
 ```
@@ -73,16 +72,24 @@ endpoint is deleted (no caller exists).
 
 All tables are created through `life table create` with typed catalog
 properties and documented in life-map before any row lands (the table
-authoring standard). Row id = the source system's stable id. Derived columns
-are filled by the hub through the derivations service and are read-only on
-every client. Row origin is a `provenance` edge, never a column.
+authoring standard). Row id = the source system's stable id. Row origin is a
+`provenance` edge, never a column.
+
+**Facts the poller already holds are written by the poller** (video title,
+duration, published time; episode title, air date, runtime; article title
+from the feed entry). They are source facts captured at ingest, recorded
+under the row's `imported_from` edge. Hub derivation is reserved for
+`tv_shows` (status and streaming providers), because the hub's sweep derives
+50 rows per property per 15 minutes and a 100k-row YouTube back catalog would
+take weeks to fill that way. Synapse-captured videos get the same columns
+from the YouTube API call Synapse already makes.
 
 ### Shared columns
 
 Every media item table has: `status` (select, required, the unified
 vocabulary, default `Not Started`), `date_watched` (date, nullable, meaning
 "finished on"; `date_read` for articles), `tags` (JSON array, user-curated),
-`note` (text), `published_at` (datetime, derived, the item's release time)
+`note` (text), `published_at` (datetime, poller-written, the item's release time)
 plus the sync columns life-data adds.
 
 ### youtube_channels - id = YouTube channel id (`UC...`)
@@ -90,9 +97,11 @@ plus the sync columns life-data adds.
 | col | type | notes |
 |---|---|---|
 | follow | bool, default 0 | surfaces the channel's videos in the feed |
-| title | text, derived `http:youtube_channel` from id | |
-| handle | text, derived | `@fireship` |
-| uploads_playlist_id | text, derived | `UU...`, the Data API back-catalog handle |
+| backfilled | bool, default 0 | poller flag: full back catalog ingested; daily runs read only the newest page afterwards |
+| title | text | from the YouTube API at seed / first sight |
+| handle | text | `@fireship` |
+| uploads_playlist_id | text | `UU...`, the Data API back-catalog handle |
+| channel_url | url | the URL as originally saved |
 | content_type, tags | JSON arrays | migrated from Notion Content Type / Tags |
 | subscription | select | migrated Notion Status: `Subscribed`, `Unsubscribed`, `To Watch`, `Never Subscribed`, `Legacy`. Informational until the deferred two-way sync |
 | notion_id | text | former Notion page id, dash-stripped |
@@ -102,8 +111,8 @@ plus the sync columns life-data adds.
 | col | type | notes |
 |---|---|---|
 | channel_id | ref -> youtube_channels | required |
-| title, duration_s, published_at, thumbnail_url | derived `http:youtube_video` from id | |
-| is_short | bool, derived | duration and aspect heuristic; feed filter only |
+| title, duration_s, published_at, thumbnail_url | poller / Synapse written | from `playlistItems.list` / `videos.list` |
+| is_short | bool | duration <= 180s heuristic; feed filter only |
 | status, date_watched, tags, note | shared | Notion `To Watch` -> `Not Started`, `Watched` -> `Finished`, `Priority`/`In Progress` unchanged |
 | notion_id | text | migrated rows only |
 
@@ -114,15 +123,15 @@ plus the sync columns life-data adds.
 | kind | select, required | `blog`, `changelog`, `newsletter`, `x` |
 | follow | bool, default 1 | |
 | title | text | user-typed at seed time |
-| fetch | select, required | `rss`, `scrape:<name>`, `x` - how the poller reads it |
-| last_polled_at, last_item_at | datetime | poller cursor, hub-written |
+| fetch | select, required | `rss`, `scrape:links`, `x` - how the poller reads it |
+| scrape_pattern | text, nullable | for `scrape:links`: regex an `<a href>` must match to count as an item |
 
 ### articles - id = canonical item URL (tracking params stripped, host lowercased)
 
 | col | type | notes |
 |---|---|---|
 | feed_id | ref -> feeds, nullable | null for manual saves |
-| title, site, author, published_at | derived `http:article_meta` from id | Open Graph / feed entry |
+| title, published_at | text / datetime | from the feed entry or scraped link text |
 | status, date_read, tags, note | shared | Notion Articles `Done` -> `Finished`, `In progress` -> `In Progress` |
 
 ### tv_shows - existing table, three additions
@@ -131,7 +140,7 @@ plus the sync columns life-data adds.
 |---|---|---|
 | follow | bool, default 1 | feed surfacing; user flips off per show |
 | tmdb_status | text, derived `http:tmdb_tv` | `Returning Series`, `Ended`, ... - gates polling |
-| watch_providers | JSON, derived `http:tmdb_tv_providers` from id | US flatrate services, the "where does it stream" answer |
+| watch_providers | JSON, derived `http:tmdb_tv` from id | US flatrate services, the "where does it stream" answer |
 
 `Watched Some` -> `Watched Parts` on the 6 rows; catalog option list updated.
 
@@ -141,7 +150,7 @@ plus the sync columns life-data adds.
 |---|---|---|
 | show_id | ref -> tv_shows, required | |
 | season, episode | int, required | inputs for derivation |
-| title, air_date, runtime_min, overview | derived `http:tmdb_episode` from (show_id, season, episode) | |
+| title, air_date, runtime_min | poller-written from the TMDB season listing | |
 | status, date_watched, note | shared | Notion TV Episodes rows import their watched marks |
 
 Ingest rule: every episode of every show in `tv_shows`, regardless of the
@@ -164,18 +173,20 @@ failures are logged and skipped so one dead feed never blocks the run.
 1. **TV**: pull `tv_shows` (`/v1/rows/pull`). For each show with
    `tmdb_status = 'Returning Series'` or with no episodes yet, list seasons
    and push any episode ids not yet present. Ended shows are fetched once.
-2. **YouTube**: pull `youtube_channels`. Daily: the per-channel RSS
-   (`/feeds/videos.xml?channel_id=`), 15 newest, no quota. First sight of a
-   channel: walk its uploads playlist via the Data API (1 unit per 50
-   videos, well inside the 10k daily quota even for the whole DB).
+2. **YouTube**: pull `youtube_channels`. Daily: the first page of each
+   channel's uploads playlist via the Data API (50 newest, 1 quota unit per
+   channel). First sight of a channel: walk every page (1 unit per 50
+   videos, well inside the 10k daily quota even for the whole DB). YouTube's
+   per-channel RSS is not used: it 404s for some channels (Fireship) that
+   the API serves.
 3. **Feeds**: pull `feeds` with `follow = 1`. `rss` sources go through the
    existing feedparser path; `scrape:*` sources have one small parser each
-   in `src/core/scrapers/`. The seed list's feed URLs are resolved when the
-   rows are created, not guessed here.
+   `scrape:links` sources fetch the page and take every `<a href>` matching
+   the row's `scrape_pattern` (link text = title). The seed list's feed URLs
+   are resolved when the rows are created, not guessed here.
 4. Each new item is pushed with `status = 'Not Started'` and a `provenance`
    edge `rel = 'imported_from'`, `from_kind` = the source kind, `from_ref`
-   = the source row id, `detail.created_row = 1`. Derived columns are left
-   empty for the hub's sweep to fill.
+   = the source row id, `detail.created_row = 1`.
 5. Pushing an item that already exists touches nothing: the push sends only
    the columns the poller owns, and existing rows are skipped by id.
 
@@ -187,18 +198,12 @@ jobs.
 
 ## Derivations (derivations repo)
 
-New endpoints following the existing `POST /<name>` protocol:
-
-| name | inputs | returns |
-|---|---|---|
-| youtube_channel | id | title, handle, uploads_playlist_id |
-| youtube_video | id | title, duration_s, published_at, thumbnail_url, is_short |
-| tmdb_episode | show_id, season, episode | title, air_date, runtime_min, overview |
-| tmdb_tv_providers | id | watch_providers (US flatrate names) |
-| article_meta | id (the URL) | title, site, author, published_at |
-
-Secrets: the YouTube Data API key (the Synapse GCP project's key, never
-delete that project) joins the Derivations ENV item.
+One change: the existing `tv` endpoint requests
+`append_to_response=credits,watch/providers` and returns two more keys,
+`tmdb_status` (TMDB's `status`, e.g. `Returning Series`, `Ended`) and
+`watch_providers` (US `flatrate` provider names). Both are cataloged on
+`tv_shows` as derived by `http:tmdb_tv` from `id`, so the hub fills them
+with no new endpoint and no new secret.
 
 ## Migration and cutover
 
@@ -227,15 +232,15 @@ delete that project) joins the Derivations ENV item.
   ENV item with `LIFE_HUB_URL`, `LIFE_HUB_TOKEN` (a `tables:write` token
   minted for this app), `TMDB_API_KEY`, `YOUTUBE_API_KEY`. Deploy = push to
   main, CI runs. Modal cron slot 3 of 5.
-- derivations: add the YouTube key, deploy via its CI.
+- derivations: no new secret; deploy the tv endpoint change via its CI.
 - mini job: nix-config module for the X scraper, enabled after switch-mini.
 
 ## Error handling
 
 - A source that fails is logged with its id and skipped; the run still
   completes and reports counts per kind.
-- A derivation failure leaves the row underived; the hub retries on its
-  sweep. The poller never writes a derived column.
+- A `tv_shows` derivation failure leaves the row underived; the hub retries
+  on its sweep. The poller never writes a derived column.
 - Duplicate pushes are idempotent by id. A re-run after a partial failure
   is safe.
 - TMDB or YouTube quota exhaustion aborts that kind for the day, logged, and
@@ -244,7 +249,7 @@ delete that project) joins the Derivations ENV item.
 
 ## Testing
 
-- Unit: parsers against recorded fixtures (YouTube RSS, TMDB season and
+- Unit: parsers against recorded fixtures (YouTube playlist items, TMDB season and
   providers responses, each scraper's saved HTML, feed samples). New-item
   detection given an existing-id set. URL canonicalisation cases.
 - Integration (marked, skipped in CI): one real fetch per source kind
@@ -263,6 +268,6 @@ delete that project) joins the Derivations ENV item.
 4. While a source has `follow = 0`, its items shall not appear in `media_feed`.
 5. The system shall never send a notification of any kind.
 6. If a source fetch fails, the system shall log the failure and continue with the remaining sources.
-7. The system shall leave every derived column empty for the hub to fill and shall never write a derived value from the poller.
-8. Where a page has no feed, the system shall use a per-source scraper committed with a recorded fixture.
+7. The system shall never write a hub-derived column (`tv_shows.tmdb_status`, `tv_shows.watch_providers`) from the poller.
+8. Where a page has no feed, the system shall use the generic link scraper with the row's `scrape_pattern`, tested against a recorded fixture.
 9. The feed view shall order items by `published_at` descending and include only rows in `Not Started` or `Priority`.
