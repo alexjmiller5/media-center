@@ -1,0 +1,44 @@
+{
+ "_id": "5a60c6329251410e20000548",
+ "air_date": "2019-07-25",
+ "episodes": [
+  {
+   "id": 1705013,
+   "name": "The Name of the Game",
+   "air_date": "2019-07-25",
+   "runtime": 62,
+   "episode_number": 1,
+   "season_number": 1
+  },
+  {
+   "id": 1863436,
+   "name": "Cherry",
+   "air_date": "2019-07-25",
+   "runtime": 59,
+   "episode_number": 2,
+   "season_number": 1
+  },
+  {
+   "id": 1863437,
+   "name": "Get Some",
+   "air_date": "2019-07-25",
+   "runtime": 55,
+   "episode_number": 3,
+   "season_number": 1
+  }
+ ],
+ "name": "Season 1",
+ "networks": [
+  {
+   "id": 1024,
+   "logo_path": "/w7HfLNm9CWwRmAMU58udl2L7We7.png",
+   "name": "Prime Video",
+   "origin_country": ""
+  }
+ ],
+ "overview": "Superpowered individuals are recognized as superheroes, but in reality, abuse their powers for personal gain, information the public is kept unaware of.",
+ "id": 98085,
+ "poster_path": "/iikrapejulhIvbNgUjj468mUE0I.jpg",
+ "season_number": 1,
+ "vote_average": 8.2
+}
