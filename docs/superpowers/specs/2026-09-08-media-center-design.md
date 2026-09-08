@@ -88,9 +88,10 @@ from the YouTube API call Synapse already makes.
 
 Every media item table has: `status` (select, required, the unified
 vocabulary, default `Not Started`), `date_watched` (date, nullable, meaning
-"finished on"; `date_read` for articles), `tags` (JSON array, user-curated),
-`note` (text), `published_at` (datetime, poller-written, the item's release time)
-plus the sync columns life-data adds.
+"finished on"; `date_read` for articles), `note` (text), `published_at`
+(datetime, poller-written, the item's release time) plus the sync columns
+life-data adds. `tags` (JSON array, user-curated) is on `youtube_videos`
+and `articles` only - `tv_episodes` has none by design.
 
 ### youtube\_channels - id = YouTube channel id (`UC...`)
 

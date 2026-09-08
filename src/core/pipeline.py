@@ -15,6 +15,8 @@ from core.hub import HubClient, imported_from, now_iso
 log = structlog.get_logger()
 CHUNK = 200
 ACTIVE_TMDB = {"Returning Series", "In Production", "Planned", "Pilot", None}
+# None: a show with no tmdb_status yet is treated as active, so it keeps being
+# walked until the hub derives its status.
 
 
 def _push_chunked(hub, table, rows) -> list[dict]:
@@ -63,7 +65,7 @@ def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
 
 
 def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
-    channels = hub.pull("youtube_channels", ["id", "uploads_playlist_id", "backfilled"])
+    channels = hub.pull("youtube_channels", ["id", "uploads_playlist_id", "backfilled", "follow"])
     known = {v["id"] for v in hub.pull("youtube_videos", ["id"])}
     out = {"channels": len(channels), "videos": 0, "failed": 0, "rejected": 0}
     for c in channels:
@@ -85,9 +87,21 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
                     for r in accepted
                 ],
             )
-            if not c.get("backfilled") and not rejected:
-                hub.push(
-                    "youtube_channels", [{"id": c["id"], "backfilled": 1, "updated_at": now_iso()}]
+            if not c.get("backfilled"):
+                # The full walk completed: flag it even if rows were rejected - a
+                # rejected id is still absent, so the next run retries it.
+                # `follow` is required by the hub's validator, so it must ride along.
+                _push_chunked(
+                    hub,
+                    "youtube_channels",
+                    [
+                        {
+                            "id": c["id"],
+                            "backfilled": 1,
+                            "follow": c["follow"],
+                            "updated_at": now_iso(),
+                        }
+                    ],
                 )
             out["videos"] += len(accepted)
             out["rejected"] += len(rejected)
@@ -136,9 +150,18 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
     return out
 
 
+def _safe(kind: str, fn, *args) -> dict:
+    """One kind's failure (e.g. a hub 5xx on its first pull) never aborts the run."""
+    try:
+        return fn(*args)
+    except Exception as exc:
+        log.exception("kind_failed", kind=kind)
+        return {"failed": 1, "error": type(exc).__name__}
+
+
 def run_daily(hub: HubClient, http: httpx.Client, settings) -> dict:
     return {
-        "tv": sync_tv(hub, http, settings.tmdb_api_key),
-        "youtube": sync_youtube(hub, http, settings.youtube_api_key),
-        "feeds": sync_feeds(hub, http),
+        "tv": _safe("tv", sync_tv, hub, http, settings.tmdb_api_key),
+        "youtube": _safe("youtube", sync_youtube, hub, http, settings.youtube_api_key),
+        "feeds": _safe("feeds", sync_feeds, hub, http),
     }

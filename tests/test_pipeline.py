@@ -85,6 +85,7 @@ def test_sync_tv_ingests_missing_episodes_with_provenance():
         for p in prov
     )
     assert len(prov) == len(rows)
+    assert "tv_shows" not in hub.pushed  # EARS-7: the poller never writes the follow list
 
 
 def test_sync_tv_skips_ended_shows_that_already_have_episodes():
@@ -192,8 +193,8 @@ def test_sync_youtube_first_page_for_backfilled_channels_and_all_pages_for_new_o
     hub = FakeHub(
         {
             "youtube_channels": [
-                {"id": "UCold", "uploads_playlist_id": "UUold", "backfilled": 1},
-                {"id": "UCnew", "uploads_playlist_id": "UUnew", "backfilled": 0},
+                {"id": "UCold", "uploads_playlist_id": "UUold", "backfilled": 1, "follow": 1},
+                {"id": "UCnew", "uploads_playlist_id": "UUnew", "backfilled": 0, "follow": 1},
             ],
             "youtube_videos": [],
         }
@@ -221,7 +222,9 @@ def test_sync_youtube_skips_known_video_ids():
     first = page["items"][0]["snippet"]["resourceId"]["videoId"]
     hub = FakeHub(
         {
-            "youtube_channels": [{"id": "UCold", "uploads_playlist_id": "UUold", "backfilled": 1}],
+            "youtube_channels": [
+                {"id": "UCold", "uploads_playlist_id": "UUold", "backfilled": 1, "follow": 1}
+            ],
             "youtube_videos": [{"id": first}],
         }
     )
@@ -230,7 +233,7 @@ def test_sync_youtube_skips_known_video_ids():
     assert out["videos"] == len(page["items"]) - 1
 
 
-def test_sync_youtube_all_rejected_not_marked_backfilled_and_no_provenance():
+def test_sync_youtube_all_rejected_still_marked_backfilled_and_no_provenance():
     page = fx("playlist_items.json")
     last = {**page, "items": page["items"][:1]}
     last.pop("nextPageToken", None)
@@ -252,7 +255,9 @@ def test_sync_youtube_all_rejected_not_marked_backfilled_and_no_provenance():
 
     hub = FakeHub(
         {
-            "youtube_channels": [{"id": "UCnew", "uploads_playlist_id": "UUnew", "backfilled": 0}],
+            "youtube_channels": [
+                {"id": "UCnew", "uploads_playlist_id": "UUnew", "backfilled": 0, "follow": 1}
+            ],
             "youtube_videos": [],
         },
         reject=reject,
@@ -261,7 +266,9 @@ def test_sync_youtube_all_rejected_not_marked_backfilled_and_no_provenance():
     assert out["videos"] == 0
     assert out["rejected"] == len(page["items"]) + 1
     assert hub.pushed.get("provenance", []) == []
-    assert not any(r.get("backfilled") for r in hub.pushed.get("youtube_channels", []))
+    # rejected ids are retried next run (detection is "id not present"), so the completed
+    # walk still flips the flag
+    assert any(r.get("backfilled") for r in hub.pushed["youtube_channels"])
 
 
 def test_sync_feeds_pushes_new_articles_for_followed_feeds_only():
@@ -312,3 +319,89 @@ def test_run_daily_returns_all_three_sections(mocker):
     settings = mocker.Mock(tmdb_api_key="t", youtube_api_key="y")
     out = pipeline.run_daily(FakeHub({}), httpx.Client(), settings)
     assert set(out) == {"tv", "youtube", "feeds"}
+
+
+def test_sync_youtube_flag_push_carries_follow_even_when_a_video_was_rejected():
+    page = fx("playlist_items.json")
+    last = {**page, "items": page["items"][:1]}
+    last.pop("nextPageToken", None)
+    bad_id = page["items"][0]["snippet"]["resourceId"]["videoId"]
+
+    def handler(request):
+        url = str(request.url)
+        if "/videos?" in url:
+            return httpx.Response(200, json=fx("videos_list.json"))
+        if "pageToken=" in url:
+            return httpx.Response(200, json=last)
+        return httpx.Response(200, json=page)
+
+    def reject(table, row):
+        if table == "youtube_videos" and row["id"] == bad_id:
+            return {"id": bad_id, "col": "published_at", "rule": "iso8601_ms", "message": "bad"}
+        return None
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    hub = FakeHub(
+        {
+            "youtube_channels": [
+                {"id": "UCnew", "uploads_playlist_id": "UUnew", "backfilled": 0, "follow": 1}
+            ],
+            "youtube_videos": [],
+        },
+        reject=reject,
+    )
+    out = pipeline.sync_youtube(hub, http, "KEY")
+    assert out["rejected"] == 2  # the fixture repeats its first item on the last page
+    flag = hub.pushed["youtube_channels"][0]
+    assert set(flag) == {"id", "backfilled", "follow", "updated_at"}
+    assert flag["id"] == "UCnew" and flag["backfilled"] == 1 and flag["follow"] == 1
+
+
+def test_sync_youtube_rejected_flag_push_is_logged():
+    page = fx("playlist_items.json")
+    last = {**page, "items": page["items"][:1]}
+    last.pop("nextPageToken", None)
+
+    def handler(request):
+        url = str(request.url)
+        if "/videos?" in url:
+            return httpx.Response(200, json=fx("videos_list.json"))
+        if "pageToken=" in url:
+            return httpx.Response(200, json=last)
+        return httpx.Response(200, json=page)
+
+    def reject(table, row):
+        if table == "youtube_channels":
+            return {"id": row["id"], "col": "follow", "rule": "required", "message": "required"}
+        return None
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    hub = FakeHub(
+        {
+            "youtube_channels": [
+                {"id": "UCnew", "uploads_playlist_id": "UUnew", "backfilled": 0, "follow": 1}
+            ],
+            "youtube_videos": [],
+        },
+        reject=reject,
+    )
+    with structlog.testing.capture_logs() as logs:
+        pipeline.sync_youtube(hub, http, "KEY")
+    warnings = [
+        log
+        for log in logs
+        if log["event"] == "rows_rejected" and log["table"] == "youtube_channels"
+    ]
+    assert len(warnings) == 1 and warnings[0]["n"] == 1
+
+
+def test_run_daily_isolates_a_failing_kind(mocker):
+    mocker.patch("core.pipeline.sync_tv", side_effect=RuntimeError("hub down"))
+    mocker.patch(
+        "core.pipeline.sync_youtube", return_value={"channels": 0, "videos": 0, "failed": 0}
+    )
+    mocker.patch("core.pipeline.sync_feeds", return_value={"feeds": 0, "articles": 0, "failed": 0})
+    settings = mocker.Mock(tmdb_api_key="t", youtube_api_key="y")
+    out = pipeline.run_daily(FakeHub({}), httpx.Client(), settings)
+    assert out["tv"] == {"failed": 1, "error": "RuntimeError"}
+    assert out["youtube"]["channels"] == 0 and out["feeds"]["feeds"] == 0
