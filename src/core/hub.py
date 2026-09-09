@@ -29,7 +29,7 @@ class HubClient:
             "Content-Type": "application/json",
         }
 
-    def pull(self, table: str, columns: list[str]) -> list[dict]:
+    def pull(self, table: str, columns: list[str], *, include_deleted: bool = False) -> list[dict]:
         cols = list(columns) + (["deleted_at"] if "deleted_at" not in columns else [])
         resp = self._http.post(
             f"{self._url}/v1/rows/pull",
@@ -37,7 +37,7 @@ class HubClient:
             headers=self._headers,
         )
         resp.raise_for_status()
-        return [r for r in resp.json()["rows"] if not r.get("deleted_at")]
+        return [r for r in resp.json()["rows"] if include_deleted or not r.get("deleted_at")]
 
     def push(self, table: str, rows: list[dict]) -> dict:
         if not rows:

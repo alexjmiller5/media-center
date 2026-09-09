@@ -17,8 +17,12 @@ class FakeHub:
         self.pushed = {}  # table -> list[dict]
         self.reject = reject  # optional (table, row) -> dict | None
 
-    def pull(self, table, columns):
-        return [{c: r.get(c) for c in columns} for r in self.tables.get(table, [])]
+    def pull(self, table, columns, *, include_deleted=False):
+        return [
+            {c: r.get(c) for c in columns}
+            for r in self.tables.get(table, [])
+            if include_deleted or not r.get("deleted_at")
+        ]
 
     def push(self, table, rows):
         self.pushed.setdefault(table, []).extend(rows)
