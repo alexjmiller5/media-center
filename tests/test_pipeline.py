@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -458,3 +459,210 @@ def test_sync_feeds_retries_shared_article_after_another_source_rejected_it():
     assert hub.tables["articles"][0]["feed_id"] == "https://two.example.com"
     assert hub.tables["provenance"][0]["from_ref"] == "https://two.example.com"
     assert pipeline.sync_feeds(hub, http)["articles"] == 0
+
+
+def test_sync_failures_log_safe_details_and_continue():
+    secret = "TEST-QUERY-SECRET"
+    body = "TEST-RESPONSE-SECRET"
+    bad_feed = f"https://bad.example.com/rss?token={secret}#private"
+    hub = FakeHub(
+        {
+            "tv_shows": [{"id": "1"}, {"id": "2"}],
+            "youtube_channels": [
+                {"id": "UCbad", "uploads_playlist_id": "UUbad", "backfilled": 0},
+                {"id": "UCgood", "uploads_playlist_id": "UUgood", "backfilled": 0},
+            ],
+            "feeds": [
+                {"id": bad_feed, "fetch": "rss"},
+                {"id": "https://good.example.com/rss", "fetch": "rss"},
+            ],
+        }
+    )
+
+    def handler(request):
+        if (
+            request.url.path == "/3/tv/1"
+            or request.url.params.get("playlistId") == "UUbad"
+            or request.url.host == "bad.example.com"
+        ):
+            return httpx.Response(404, text=body)
+        if request.url.host == "good.example.com":
+            return httpx.Response(200, text='<rss version="2.0"><channel/></rss>')
+        return httpx.Response(200, json={"seasons": [], "items": []})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    with structlog.testing.capture_logs(processors=[structlog.processors.format_exc_info]) as logs:
+        # Repeat the actual sync paths: inaccessible playlists stay failures and retry.
+        for _ in range(2):
+            assert pipeline.sync_tv(hub, http, secret) == {
+                "shows": 2,
+                "episodes": 0,
+                "failed": 1,
+                "rejected": 0,
+            }
+            assert pipeline.sync_youtube(hub, http, secret) == {
+                "channels": 2,
+                "videos": 0,
+                "failed": 1,
+                "rejected": 0,
+            }
+            assert pipeline.sync_feeds(hub, http) == {
+                "feeds": 2,
+                "articles": 0,
+                "failed": 1,
+                "rejected": 0,
+            }
+    rendered = json.dumps(logs)
+    assert secret not in rendered and body not in rendered
+    failures = [entry for entry in logs if entry["event"].endswith("_failed")]
+    assert (
+        failures
+        == [
+            {
+                "event": event,
+                **source,
+                "error": "HTTPStatusError",
+                "http_status": 404,
+                "log_level": "error",
+            }
+            for event, source in [
+                ("tv_failed", {"show": "1"}),
+                ("youtube_failed", {"channel": "UCbad"}),
+                (
+                    "feed_failed",
+                    {"feed": "b6364921ac5214032ae03612379c0b00b7ef781c8346a29dbb6fad2d0e432d38"},
+                ),
+            ]
+        ]
+        * 2
+    )
+    assert hub.tables["youtube_channels"][0]["backfilled"] == 0
+    assert hub.tables["youtube_channels"][1]["backfilled"] == 1
+
+
+@pytest.mark.parametrize("http_error", [True, False])
+def test_kind_failures_log_safe_details_and_continue(http_error):
+    secret, body, message = "TEST-QUERY-SECRET", "TEST-RESPONSE-SECRET", "TEST-MESSAGE-SECRET"
+    request = httpx.Request("POST", f"https://hub.example.com/pull?key={secret}")
+    error = (
+        httpx.HTTPStatusError(
+            message, request=request, response=httpx.Response(503, text=body, request=request)
+        )
+        if http_error
+        else RuntimeError(message)
+    )
+
+    def handler(request):
+        if json.loads(request.content)["table"] == "tv_shows":
+            raise error
+        return httpx.Response(200, json={"rows": []})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    hub = pipeline.HubClient("https://hub.example.com", "test-token", http)
+    settings = SimpleNamespace(tmdb_api_key=secret, youtube_api_key=secret)
+    with structlog.testing.capture_logs(processors=[structlog.processors.format_exc_info]) as logs:
+        result = pipeline.run_daily(hub, http, settings)
+    assert all(value not in json.dumps(logs) for value in (secret, body, message))
+    error_type = "HTTPStatusError" if http_error else "RuntimeError"
+    expected = {"event": "kind_failed", "kind": "tv", "error": error_type, "log_level": "error"}
+    if http_error:
+        expected["http_status"] = 503
+    assert logs == [expected]
+    assert result["tv"] == {"failed": 1, "error": error_type}
+    assert result["youtube"] == {"channels": 0, "videos": 0, "failed": 0, "rejected": 0}
+    assert result["feeds"] == {"feeds": 0, "articles": 0, "failed": 0, "rejected": 0}
+
+
+def test_sync_youtube_ingests_videos_with_unavailable_duration():
+    ids = ["known000001", "missing0001", "empty000001"]
+    page = {
+        "items": [{"snippet": {"resourceId": {"videoId": vid}, "title": "Upload"}} for vid in ids]
+    }
+    http = http_for(
+        [
+            ("playlistItems", page),
+            (
+                "/videos?",
+                {
+                    "items": [
+                        {"id": ids[0], "contentDetails": {"duration": "PT45S"}},
+                        {"id": ids[1], "contentDetails": {"dimension": "2d", "definition": "hd"}},
+                        {"id": ids[2], "contentDetails": {"duration": ""}},
+                    ]
+                },
+            ),
+        ]
+    )
+    hub = FakeHub(
+        {"youtube_channels": [{"id": "UCtest", "uploads_playlist_id": "UUtest", "backfilled": 0}]}
+    )
+    assert pipeline.sync_youtube(hub, http, "KEY") == {
+        "channels": 1,
+        "videos": 3,
+        "failed": 0,
+        "rejected": 0,
+    }
+    assert [(r["duration_s"], r["is_short"]) for r in hub.tables["youtube_videos"]] == [
+        (45, 1),
+        (None, 0),
+        (None, 0),
+    ]
+    assert hub.tables["youtube_channels"][0]["backfilled"] == 1
+    assert len(hub.tables["provenance"]) == 3
+
+
+def test_feed_logs_use_stable_opaque_source_ids():
+    secrets = ["TEST-USER", "TEST-PASSWORD", "TEST-PATH", "TEST-QUERY", "TEST-FRAGMENT"]
+    user, password, path, query, fragment = secrets
+    urls = [
+        f"https://{user}:{password}@feeds.example.com/{path}/{name}?token={query}#{fragment}"
+        for name in ("first", "second")
+    ]
+    hub = FakeHub({"feeds": [{"id": url, "fetch": "rss"} for url in urls]})
+    fail_first = True
+
+    def handler(request):
+        name = request.url.path.rsplit("/", 1)[-1]
+        if fail_first and name == "first":
+            return httpx.Response(403)
+        return httpx.Response(
+            200,
+            text=f'<rss version="2.0"><channel><item>'
+            f"<title>Post</title><link>https://articles.example.com/{name}</link>"
+            "</item></channel></rss>",
+        )
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    with structlog.testing.capture_logs(processors=[structlog.processors.format_exc_info]) as logs:
+        assert pipeline.sync_feeds(hub, http) == {
+            "feeds": 2,
+            "articles": 1,
+            "failed": 1,
+            "rejected": 0,
+        }
+        fail_first = False
+        assert pipeline.sync_feeds(hub, http) == {
+            "feeds": 2,
+            "articles": 1,
+            "failed": 0,
+            "rejected": 0,
+        }
+    rendered = json.dumps(logs)
+    assert all(secret not in rendered for secret in secrets)
+    first, second = logs[0]["feed"], logs[1]["feed"]
+    assert first != second
+    assert all(
+        len(value) == 64 and set(value) <= set("0123456789abcdef") for value in (first, second)
+    )
+    assert logs == [
+        {
+            "event": "feed_failed",
+            "feed": first,
+            "error": "HTTPStatusError",
+            "http_status": 403,
+            "log_level": "error",
+        },
+        {"event": "feed_synced", "feed": second, "new": 1, "log_level": "info"},
+        {"event": "feed_synced", "feed": first, "new": 1, "log_level": "info"},
+        {"event": "feed_synced", "feed": second, "new": 0, "log_level": "info"},
+    ]
