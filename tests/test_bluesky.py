@@ -282,6 +282,7 @@ def test_bluesky_rejects_malformed_post_uri(uri):
 )
 def test_bluesky_failed_walk_is_counted_safe_and_writes_no_partial_history(problem):
     pushes = []
+    stored = {}
     requests = 0
     private = "SYNTHETIC-PRIVATE-PAYLOAD"
 
@@ -295,10 +296,11 @@ def test_bluesky_failed_walk_is_counted_safe_and_writes_no_partial_history(probl
                     json={
                         "rows": [SOURCE, {"id": "https://rss.example/feed", "fetch": "rss"}]
                         if body["table"] == "feeds"
-                        else []
+                        else stored.get(body["table"], [])
                     },
                 )
             pushes.append(body)
+            stored.setdefault(body["table"], []).extend(body["rows"])
             return httpx.Response(200, json={"upserted": len(body["rows"]), "rejected": []})
         if request.url.host == "rss.example":
             return httpx.Response(

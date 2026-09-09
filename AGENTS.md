@@ -66,12 +66,22 @@ Instantiate `Settings()` inside functions, never at import time.
   `tv_shows.watch_providers`) is out of scope - this service only pushes the
   columns it owns (episode/video/article rows) and never touches those.
 - **New-item detection is "id not yet in the table"**, checked against the
-  hub's actual pulled state at the start of each sync. Article ID lookups
+  hub's actual pulled state at the start of each sync. Item ID lookups
   include tombstones so ingestion never overwrites deleted items. Accepted
   articles are also de-duplicated across feeds within a run; rejected ids remain
   eligible for retry. Existing items are never reinitialized.
-- Every new item gets `status = "Not Started"`; every new item also gets a
-  `provenance` row (`rel = "imported_from"`) via `core.hub.imported_from`.
+- Every new item gets `status = "Not Started"`. After each kind's ingestion,
+  shared provenance reconciliation reads live stored items and their parent
+  columns (`feed_id`, `show_id`, `channel_id`) and inserts missing
+  `imported_from` edges. It does not infer ownership from the current source
+  response. Missing/null parents are left alone; manual rows are not assigned
+  a source. Existing edge IDs, including tombstones, are never rewritten.
+- Provenance repairs run independently of upstream listings and retry after
+  rejection, HTTP failure or process interruption. `rejected` includes edge
+  rejections, counted per chunk; reconciliation failure increments `failed`.
+  Repair never changes item state or increments new-item counts. Edge detail
+  uses `created_row = 1` only for items accepted as new in the current run;
+  older-item repairs use `created_row = 0`. No durable queue is needed.
 - A `feeds` row with `fetch = "x"` is skipped - X/Twitter scraping is a
   separate mac-mini job, not this poller's job.
 - A `feeds` row with `fetch = "bluesky"` uses a canonical
@@ -125,5 +135,7 @@ Bluesky ingestion requires `bluesky` options on `feeds.fetch` and
 `feeds.kind`, plus optional JSON `articles.content` owned by the poller.
 Provision these catalog properties through the installed Life interface
 before activating a source.
+Provenance reconciliation additionally reads `provenance` IDs and live
+item parent relationships, using the same hub pull endpoint and scoped token.
 Table schemas and conventions are documented in
 the `life-map` skill - read it before adding a column or a new source table.

@@ -27,8 +27,18 @@ source URLs, cursors or remote exception text.
 
 Ingestion shall insert only missing article IDs, including tombstones in
 the known-ID set. Existing state and soft deletes shall remain unchanged.
-Only accepted new articles shall receive imported_from provenance;
-rejected rows shall remain eligible for retry.
+Feeds, TV and YouTube shall reconcile missing imported_from edges using
+stored live item parent relationships and existing provenance IDs. Existing
+edges and tombstones shall not be overwritten. Null parents shall not gain
+guessed source ownership. Rejected primary rows shall not gain an edge.
+
+Edge rejection or an interrupted/lost response after item acceptance shall
+remain repairable after restart, even if upstream no longer lists the item.
+Rejections shall count, including earlier rejected chunks when a later chunk
+fails. Repair shall not increment new-item counts or rewrite item state.
+Only items accepted as new in the current run shall receive created_row=1;
+older-item repairs shall receive created_row=0. No queue or new endpoint
+shall be required.
 
 No credentials, dependencies, checkpoints, live account identifiers,
 production data access, catalog mutations or deployment are required here.
