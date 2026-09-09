@@ -1,6 +1,6 @@
 """YouTube channels and videos through the Data API: the uploads playlist
-(first page = daily delta, all pages = back catalog), durations and channel
-resolution. No Modal imports. Per-channel RSS is deliberately not used: it
+(pages through known uploads = daily delta, all pages = back catalog),
+durations and channel resolution. No Modal imports. Per-channel RSS is deliberately not used: it
 404s for some channels the API serves fine."""
 
 import re
@@ -34,9 +34,9 @@ def to_hub_datetime(value: str | None) -> str | None:
 
 
 def uploads(
-    playlist_id: str, key: str, http: httpx.Client, max_pages: int | None = None
+    playlist_id: str, key: str, http: httpx.Client, known_ids: set[str] | None = None
 ) -> list[dict]:
-    out, token, pages = [], None, 0
+    out, token = [], None
     while True:
         params = {"part": "snippet", "maxResults": 50, "playlistId": playlist_id, "key": key}
         if token:
@@ -44,7 +44,8 @@ def uploads(
         resp = http.get(f"{API}/playlistItems", params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        for item in data.get("items", []):
+        items = data.get("items", [])
+        for item in items:
             sn = item["snippet"]
             out.append(
                 {
@@ -54,8 +55,13 @@ def uploads(
                 }
             )
         token = data.get("nextPageToken")
-        pages += 1
-        if not token or (max_pages is not None and pages >= max_pages):
+        # A mixed page can contain saved videos ahead of still-missing uploads.
+        reached_known = (
+            known_ids is not None
+            and items
+            and all(item["snippet"]["resourceId"]["videoId"] in known_ids for item in items)
+        )
+        if not token or reached_known:
             return out
 
 
