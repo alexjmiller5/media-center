@@ -76,7 +76,8 @@ def durations(video_ids: list[str], key: str, http: httpx.Client) -> dict[str, i
         )
         resp.raise_for_status()
         for item in resp.json().get("items", []):
-            out[item["id"]] = parse_iso8601_duration(item["contentDetails"]["duration"])
+            if duration := item["contentDetails"].get("duration"):
+                out[item["id"]] = parse_iso8601_duration(duration)
     return out
 
 

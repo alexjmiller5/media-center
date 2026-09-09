@@ -158,3 +158,11 @@ def test_to_hub_datetime_normalizes_youtube_timestamps():
     assert youtube.to_hub_datetime("2026-09-07T17:24:51+05:00") == "2026-09-07T12:24:51.000Z"
     assert youtube.to_hub_datetime(None) is None
     assert youtube.to_hub_datetime("") is None
+
+
+def test_durations_rejects_malformed_nonempty_value():
+    http = route(
+        [("/videos?", {"items": [{"id": "invalid", "contentDetails": {"duration": "P1W"}}]})]
+    )
+    with pytest.raises(ValueError):
+        youtube.durations(["invalid"], "KEY", http)

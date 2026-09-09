@@ -5,6 +5,8 @@ logged and counted, the run continues. New-item detection is "id not yet in
 the table", so a partial run is safe to repeat.
 """
 
+from hashlib import sha256
+
 import httpx
 import structlog
 
@@ -14,6 +16,13 @@ from core.hub import HubClient, imported_from, now_iso
 
 log = structlog.get_logger()
 CHUNK = 200
+
+
+def _log_failure(event: str, exc: Exception, **context) -> None:
+    """Log only safe diagnostics; exception messages and tracebacks can contain keys."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        context["http_status"] = exc.response.status_code
+    log.error(event, error=type(exc).__name__, **context)
 
 
 def _push_chunked(hub, table, rows) -> list[dict]:
@@ -53,9 +62,9 @@ def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
             out["episodes"] += len(accepted)
             out["rejected"] += len(rejected)
             log.info("tv_synced", show=s["id"], new=len(accepted))
-        except Exception:
+        except Exception as exc:
             out["failed"] += 1
-            log.exception("tv_failed", show=s["id"])
+            _log_failure("tv_failed", exc, show=s["id"])
     return out
 
 
@@ -108,9 +117,9 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
                 new=len(accepted),
                 backfill=not c.get("backfilled"),
             )
-        except Exception:
+        except Exception as exc:
             out["failed"] += 1
-            log.exception("youtube_failed", channel=c["id"])
+            _log_failure("youtube_failed", exc, channel=c["id"])
     return out
 
 
@@ -119,6 +128,8 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
     known = {a["id"] for a in hub.pull("articles", ["id"])}
     out = {"feeds": len(rows), "articles": 0, "failed": 0, "rejected": 0}
     for f in rows:
+        # Feed URLs can carry credentials in any component; log only an opaque id.
+        source_id = sha256(f["id"].encode()).hexdigest()
         try:
             items = [
                 r
@@ -136,10 +147,10 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
             known.update(r["id"] for r in accepted)
             out["articles"] += len(accepted)
             out["rejected"] += len(rejected)
-            log.info("feed_synced", feed=f["id"], new=len(accepted))
-        except Exception:
+            log.info("feed_synced", feed=source_id, new=len(accepted))
+        except Exception as exc:
             out["failed"] += 1
-            log.exception("feed_failed", feed=f["id"])
+            _log_failure("feed_failed", exc, feed=source_id)
     return out
 
 
@@ -148,7 +159,7 @@ def _safe(kind: str, fn, *args) -> dict:
     try:
         return fn(*args)
     except Exception as exc:
-        log.exception("kind_failed", kind=kind)
+        _log_failure("kind_failed", exc, kind=kind)
         return {"failed": 1, "error": type(exc).__name__}
 
 
