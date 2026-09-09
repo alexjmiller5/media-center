@@ -51,8 +51,10 @@ class HubClient:
         return resp.json()
 
 
-def imported_from(from_kind: str, from_ref: str, to_kind: str, to_ref: str) -> dict:
-    """The provenance edge that records which source row created an item row."""
+def imported_from(
+    from_kind: str, from_ref: str, to_kind: str, to_ref: str, *, created_row: bool = True
+) -> dict:
+    """Record the stored source relationship, distinguishing creation from repair."""
     return {
         "id": f"{from_kind}:{from_ref}:{to_ref}",
         "from_kind": from_kind,
@@ -61,7 +63,7 @@ def imported_from(from_kind: str, from_ref: str, to_kind: str, to_ref: str) -> d
         "to_ref": to_ref,
         "rel": "imported_from",
         "field": None,
-        "detail": json.dumps({"created_row": 1}),
+        "detail": json.dumps({"created_row": int(created_row)}),
         "asserted_by": ASSERTED_BY,
         "updated_at": now_iso(),
     }
