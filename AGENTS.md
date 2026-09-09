@@ -1,7 +1,7 @@
 # AGENTS.md
 
 media-center: a daily poller that ingests TV episodes (TMDB), YouTube
-uploads (YouTube Data API) and blog/feed articles (RSS + link scraping)
+uploads (YouTube Data API) and articles (RSS, link scraping and public Bluesky)
 into Alex's life-data hub. No frontend, no webhook - life-data (and
 whatever reads it) is the UI. Python service deployed on Modal as a single
 cron job.
@@ -43,7 +43,8 @@ Instantiate `Settings()` inside functions, never at import time.
 | `core/hub.py` | `HubClient` (`pull`/`push` against the life-data hub), `imported_from` (provenance edge), `now_iso` |
 | `core/tmdb.py` | TMDB show/season lookups -> `tv_episodes` rows |
 | `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows |
-| `core/feeds.py` | RSS parsing + generic link scraping -> `articles` rows |
+| `core/feeds.py` | RSS, link scraping and Bluesky dispatch -> `articles` rows |
+| `core/bluesky.py` | Public author-feed pagination, DID-based post IDs and original content |
 | `core/watcher.py` | `Entry` + `parse_feed` (feedparser wrapper), shared by `feeds.py` |
 | `core/pipeline.py` | `sync_tv`, `sync_youtube`, `sync_feeds`, `run_daily` - wires the above into one ingestion pass |
 
@@ -65,13 +66,28 @@ Instantiate `Settings()` inside functions, never at import time.
   `tv_shows.watch_providers`) is out of scope - this service only pushes the
   columns it owns (episode/video/article rows) and never touches those.
 - **New-item detection is "id not yet in the table"**, checked against the
-  hub's actual pulled state at the start of each sync. Accepted articles
-  are also de-duplicated across feeds within a run; rejected ids remain
+  hub's actual pulled state at the start of each sync. Article ID lookups
+  include tombstones so ingestion never overwrites deleted items. Accepted
+  articles are also de-duplicated across feeds within a run; rejected ids remain
   eligible for retry. Existing items are never reinitialized.
 - Every new item gets `status = "Not Started"`; every new item also gets a
   `provenance` row (`rel = "imported_from"`) via `core.hub.imported_from`.
 - A `feeds` row with `fetch = "x"` is skipped - X/Twitter scraping is a
   separate mac-mini job, not this poller's job.
+- A `feeds` row with `fetch = "bluesky"` uses a canonical
+  `https://bsky.app/profile/<DID>` ID. Every run walks the public author feed
+  in full, without credentials, regardless of follow state. Only original
+  top-level posts, quotes and media-only posts are ingested; replies,
+  reposts and other authors are skipped. Native AT URIs deduplicate posts;
+  article URLs contain the DID, never a mutable handle.
+- Bluesky `articles.content` is optional JSON text: `{uri, record, embed?}`.
+  The record retains full text, facets and original embed data; `embed`
+  preserves the post-view payload when supplied. Ordinary feed rows omit
+  content. Titles use a bounded first-line preview or a record-key fallback.
+  Invalid pages, records, URIs, dates or cursors fail the source before any
+  of its articles are written; repeated cursors fail rather than loop.
+- Feed logs use hashed source IDs, error classes/HTTP statuses and counts;
+  remote messages, content and rejection payloads are never logged.
 - It never sends notifications.
 - Datetimes pushed to the hub are millisecond ISO-8601 (`to_hub_datetime`),
   and a rejected row (the hub's `push` `rejected` list) is counted, logged
@@ -85,10 +101,13 @@ not a script catalog; one-offs go in `scripts/` and run directly.
 | Command | Purpose |
 |---|---|
 | `just test` / `just check` / `just fmt` | pytest / ruff read-only / ruff fix |
-| `just logs` | Stream deployed-app logs |
+| `just logs` | Stream deployed-app logs via the installed `modal` command |
 | `just sync-secrets` | Push `.env.tpl` → Modal secret store |
 | `just deploy` | test + sync-secrets + `modal deploy` |
 | `just run` | One ingestion run on Modal, on demand (`modal run app.py`) |
+
+`run` and `logs` call bare `modal` so the installed authentication wrapper
+is used; `uv run modal` bypasses it.
 
 ## TDD
 
@@ -102,5 +121,9 @@ follow/tracking lists) and writes `tv_episodes`, `youtube_videos`,
 `articles` and `provenance`, plus the one flag it owns on a follow list:
 `youtube_channels.backfilled` - pushed as a partial row (`{id, backfilled,
 updated_at}`), since the hub checks required columns against the merged row.
+Bluesky ingestion requires `bluesky` options on `feeds.fetch` and
+`feeds.kind`, plus optional JSON `articles.content` owned by the poller.
+Provision these catalog properties through the installed Life interface
+before activating a source.
 Table schemas and conventions are documented in
 the `life-map` skill - read it before adding a column or a new source table.

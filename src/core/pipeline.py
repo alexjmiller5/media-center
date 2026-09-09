@@ -30,7 +30,7 @@ def _push_chunked(hub, table, rows) -> list[dict]:
     for i in range(0, len(rows), CHUNK):
         rejected += hub.push(table, rows[i : i + CHUNK])["rejected"]
     if rejected:
-        log.warning("rows_rejected", table=table, n=len(rejected), first=rejected[0])
+        log.warning("rows_rejected", table=table, n=len(rejected))
     return rejected
 
 
@@ -125,7 +125,7 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
 
 def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
     rows = [f for f in hub.pull("feeds", ["id", "fetch", "scrape_pattern"]) if f["fetch"] != "x"]
-    known = {a["id"] for a in hub.pull("articles", ["id"])}
+    known = {a["id"] for a in hub.pull("articles", ["id"], include_deleted=True)}
     out = {"feeds": len(rows), "articles": 0, "failed": 0, "rejected": 0}
     for f in rows:
         # Feed URLs can carry credentials in any component; log only an opaque id.
