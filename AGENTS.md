@@ -139,3 +139,11 @@ Provenance reconciliation additionally reads `provenance` IDs and live
 item parent relationships, using the same hub pull endpoint and scoped token.
 Table schemas and conventions are documented in
 the `life-map` skill - read it before adding a column or a new source table.
+
+## Credential provisioning
+
+`op-project-bootstrap` calls `scripts/provision.py --batch modal-token` to
+mint one dedicated CI token pair. Open its stderr URL in the configured
+remote browser session and approve the displayed code. Both verified fields
+are saved together in the project vault through JSON stdin; no plaintext
+credential cache is written. Individual Modal field minting is refused.
