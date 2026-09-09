@@ -15,7 +15,7 @@ fmt:
 
 # Stream logs from the deployed app
 logs:
-    uv run modal app logs media-center
+    modal app logs media-center
 
 # Push .env.tpl secrets into the Modal secret store (no plaintext touches disk;
 # the modal CLI rejects process-substitution FIFOs, hence the stdin script)
@@ -29,4 +29,4 @@ deploy: test sync-secrets
 
 # One ingestion run on Modal, now (uses the deployed secret)
 run:
-    uv run modal run app.py
+    modal run app.py

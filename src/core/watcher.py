@@ -17,6 +17,7 @@ class Entry:
     title: str
     url: str
     published: datetime | None
+    content: dict | None = None
 
 
 def parse_feed(content: str | bytes) -> list[Entry]:

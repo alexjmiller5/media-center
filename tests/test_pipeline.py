@@ -17,8 +17,12 @@ class FakeHub:
         self.pushed = {}  # table -> list[dict]
         self.reject = reject  # optional (table, row) -> dict | None
 
-    def pull(self, table, columns):
-        return [{c: r.get(c) for c in columns} for r in self.tables.get(table, [])]
+    def pull(self, table, columns, *, include_deleted=False):
+        return [
+            {c: r.get(c) for c in columns}
+            for r in self.tables.get(table, [])
+            if include_deleted or not r.get("deleted_at")
+        ]
 
     def push(self, table, rows):
         self.pushed.setdefault(table, []).extend(rows)
@@ -71,7 +75,10 @@ def test_sync_tv_ingests_missing_episodes_with_provenance():
         [
             ("/tv/76479/season/1", season),
             ("/tv/76479?", show),
-            ("/tv/1/season/1", season),
+            (
+                "/tv/1/season/1",
+                {"episodes": [{**e, "id": f"other-{e['id']}"} for e in season["episodes"]]},
+            ),
             ("/tv/1?", show),
         ]
     )
@@ -79,7 +86,7 @@ def test_sync_tv_ingests_missing_episodes_with_provenance():
     # Both shows are fetched; the known episode is skipped.
     assert out["shows"] == 2 and out["failed"] == 0
     rows = hub.pushed["tv_episodes"]
-    # both shows share the season fixture (3 episodes); show 76479 already has 1 -> 5 new rows total
+    # Distinct episode IDs per show; the first show already has one episode.
     assert len(rows) == 2 * 3 - 1
     by_show = {}
     for r in rows:
@@ -92,7 +99,8 @@ def test_sync_tv_ingests_missing_episodes_with_provenance():
         and p["rel"] == "imported_from"
         for p in prov
     )
-    assert len(prov) == len(rows)
+    assert len(prov) == len(rows) + 1
+    assert json.loads(next(p for p in prov if p["to_ref"] == known)["detail"]) == {"created_row": 0}
     assert "tv_shows" not in hub.pushed  # EARS-7: the poller never writes the follow list
 
 
@@ -117,7 +125,7 @@ def test_sync_tv_retries_partial_ended_backfill_without_resetting_status():
     )
     first = pipeline.sync_tv(hub, http, "KEY")
     assert first == {"shows": 1, "episodes": 1, "failed": 0, "rejected": 1}
-    assert {p["to_ref"] for p in hub.tables["provenance"]} == {ids[1]}
+    assert {p["to_ref"] for p in hub.tables["provenance"]} == {ids[0], ids[1]}
     hub.reject = None
     assert pipeline.sync_tv(hub, http, "KEY")["episodes"] == 1
     assert pipeline.sync_tv(hub, http, "KEY")["episodes"] == 0
@@ -191,7 +199,7 @@ def test_sync_tv_rejected_provenance_row_is_warned_but_episode_still_accepted():
     with structlog.testing.capture_logs() as logs:
         out = pipeline.sync_tv(hub, http, "KEY")
     assert out["episodes"] == len(season["episodes"])  # provenance rejection doesn't uncount it
-    assert out["rejected"] == 0  # scoped to the primary table, not provenance
+    assert out["rejected"] == 1  # provenance rejection is part of the ingestion result
     warnings = [
         log for log in logs if log["log_level"] == "warning" and log["event"] == "rows_rejected"
     ]

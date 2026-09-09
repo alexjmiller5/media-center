@@ -1,11 +1,14 @@
-"""RSS feeds and no-feed pages -> article rows. No Modal imports."""
+"""RSS, scraped links and public Bluesky feeds -> article rows. No Modal imports."""
 
+import json
 import re
+from datetime import UTC
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 
+from core import bluesky
 from core.hub import now_iso
 from core.watcher import Entry, parse_feed
 
@@ -61,6 +64,8 @@ def scrape_links(html: str, base_url: str, pattern: str) -> list[Entry]:
 
 def entries(feed_row: dict, http: httpx.Client) -> list[Entry]:
     fetch = feed_row["fetch"]
+    if fetch == "bluesky":
+        return bluesky.entries(feed_row["id"], http)
     if fetch == "x":
         return []
     resp = http.get(feed_row["id"], timeout=30, follow_redirects=True)
@@ -79,9 +84,20 @@ def article_rows(feed_id: str, items: list[Entry]) -> list[dict]:
             "id": canonical_url(e.url),
             "feed_id": feed_id,
             "title": e.title,
-            "published_at": e.published.strftime("%Y-%m-%dT%H:%M:%S.000Z") if e.published else None,
+            "published_at": (
+                e.published.astimezone(UTC)
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z")
+                if e.published
+                else None
+            ),
             "status": "Not Started",
             "updated_at": stamp,
+            **(
+                {"content": json.dumps(e.content, ensure_ascii=False)}
+                if e.content is not None
+                else {}
+            ),
         }
         for e in items
         if e.url
