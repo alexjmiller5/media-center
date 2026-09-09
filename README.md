@@ -5,6 +5,13 @@ Data API) and blog/feed articles (RSS + generic link scraping) into a
 life-data hub. No frontend - the hub (and whatever reads it) is the UI.
 Runs on [Modal](https://modal.com) as a single daily cron job.
 
+Every tracked show, channel and RSS/scrape feed is catalogued regardless of
+`follow`; follow only controls what a reader surfaces. Existing items keep
+their user statuses, dates, notes and tags. Ended shows are checked on every
+run to fill any missing episodes. YouTube deltas page until a nonempty page
+is entirely known (or the playlist ends); incomplete writes leave the channel
+eligible for a full backfill on the next run.
+
 ## Layout
 
 ```

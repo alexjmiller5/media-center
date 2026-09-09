@@ -33,7 +33,7 @@ Instantiate `Settings()` inside functions, never at import time.
 | `LIFE_HUB_URL` | Base URL of the life-data hub API |
 | `LIFE_HUB_TOKEN` | Bearer token, scoped `tables:read,tables:write` on the tables below (a write-only token cannot pull) |
 | `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) - account-level key, shared with the derivations project since TMDB issues only one v3 key per account |
-| `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) - this project's own dedicated key, minted for media-center |
+| `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) |
 
 ## Module map
 
@@ -49,14 +49,26 @@ Instantiate `Settings()` inside functions, never at import time.
 
 ## Rules the poller follows
 
+- **Catalog every tracked source regardless of follow or user status.**
+  `follow` only gates the reader's feed. Existing item ids are skipped, so
+  ingestion preserves their status, dates, notes and tags.
+- TV always checks every show's seasons, including ended shows, so partial
+  backfills are retried without a separate completion flag.
+- YouTube walks all pages until `backfilled = 1`; deltas then continue through
+  mixed pages until a nonempty page contains only ids already in the hub, or
+  the playlist ends. Before delta writes, it clears `backfilled`; it restores
+  the flag only after all video rows are accepted. Rejections or interrupted
+  writes leave a full walk due. Flag writes contain only
+  `{id, backfilled, updated_at}`.
 - **The poller writes source facts; never a derived column.** Anything the
   hub or a downstream consumer computes (e.g. `tv_shows.tmdb_status`,
   `tv_shows.watch_providers`) is out of scope - this service only pushes the
   columns it owns (episode/video/article rows) and never touches those.
 - **New-item detection is "id not yet in the table"**, checked against the
-  hub's actual pulled state at the start of each sync - not an in-run
-  accumulator. A partial or repeated run is always safe.
-- Every pushed row gets `status = "Not Started"`; every new item also gets a
+  hub's actual pulled state at the start of each sync. Accepted articles
+  are also de-duplicated across feeds within a run; rejected ids remain
+  eligible for retry. Existing items are never reinitialized.
+- Every new item gets `status = "Not Started"`; every new item also gets a
   `provenance` row (`rel = "imported_from"`) via `core.hub.imported_from`.
 - A `feeds` row with `fetch = "x"` is skipped - X/Twitter scraping is a
   separate mac-mini job, not this poller's job.

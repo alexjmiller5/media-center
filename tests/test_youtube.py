@@ -43,18 +43,23 @@ def test_uploads_follows_next_page_token():
     assert "playlistId=UUHnyfMqiRRG1u-2MsSQLbXA" in calls[0] and "key=KEY" in calls[0]
 
 
-def test_uploads_max_pages_stops_after_first_page():
-    page1 = json.loads((FIX / "playlist_items.json").read_text())
+@pytest.mark.parametrize("known_ids,expected_pages", [({"known"}, 3), (None, 4)])
+def test_uploads_stops_at_nonempty_fully_known_page(known_ids, expected_pages):
+    pages = [[], ["known", "new"], ["known"], ["old"]]
     calls = []
 
     def handler(request):
-        calls.append(str(request.url))
-        return httpx.Response(200, json=page1)
+        offset = int(request.url.params.get("pageToken", "0"))
+        calls.append(offset)
+        data = {"items": [{"snippet": {"resourceId": {"videoId": vid}}} for vid in pages[offset]]}
+        if offset < 3:
+            data["nextPageToken"] = str(offset + 1)
+        return httpx.Response(200, json=data)
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    vids = youtube.uploads("UUHnyfMqiRRG1u-2MsSQLbXA", "KEY", http, max_pages=1)
-    assert len(vids) == len(page1["items"]) and len(calls) == 1
-    assert vids[0]["published_at"] == page1["items"][0]["snippet"]["publishedAt"]
+    vids = youtube.uploads("UUtest", "KEY", http, known_ids=known_ids)
+    assert calls == list(range(expected_pages))
+    assert {v["id"] for v in vids} == ({"known", "new"} if known_ids else {"known", "new", "old"})
 
 
 def test_durations_batches_by_50_and_parses_iso():

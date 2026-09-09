@@ -14,9 +14,6 @@ from core.hub import HubClient, imported_from, now_iso
 
 log = structlog.get_logger()
 CHUNK = 200
-ACTIVE_TMDB = {"Returning Series", "In Production", "Planned", "Pilot", None}
-# None: a show with no tmdb_status yet is treated as active, so it keeps being
-# walked until the hub derives its status.
 
 
 def _push_chunked(hub, table, rows) -> list[dict]:
@@ -29,15 +26,13 @@ def _push_chunked(hub, table, rows) -> list[dict]:
 
 
 def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
-    shows = hub.pull("tv_shows", ["id", "tmdb_status"])
+    shows = hub.pull("tv_shows", ["id"])
     known = {}
     for e in hub.pull("tv_episodes", ["id", "show_id"]):
         known.setdefault(e["show_id"], set()).add(e["id"])
     out = {"shows": len(shows), "episodes": 0, "failed": 0, "rejected": 0}
     for s in shows:
         have = known.get(s["id"], set())
-        if have and s.get("tmdb_status") not in ACTIVE_TMDB:
-            continue  # ended and already ingested
         try:
             show = tmdb.show(s["id"], key, http)
             rows = []
@@ -71,11 +66,22 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
     for c in channels:
         try:
             vids = youtube.uploads(
-                c["uploads_playlist_id"], key, http, max_pages=1 if c.get("backfilled") else None
+                c["uploads_playlist_id"],
+                key,
+                http,
+                known_ids=known if c.get("backfilled") else None,
             )
             vids = [v for v in vids if v["id"] not in known]
             durs = youtube.durations([v["id"] for v in vids], key, http) if vids else {}
             rows = youtube.video_rows(c["id"], vids, durs)
+            if rows and c.get("backfilled"):
+                # Persist retry intent before any chunk can be partially accepted.
+                if _push_chunked(
+                    hub,
+                    "youtube_channels",
+                    [{"id": c["id"], "backfilled": 0, "updated_at": now_iso()}],
+                ):
+                    raise RuntimeError("could not mark channel for retry")
             rejected = _push_chunked(hub, "youtube_videos", rows)
             bad_ids = {r["id"] for r in rejected}
             accepted = [r for r in rows if r["id"] not in bad_ids]
@@ -87,11 +93,8 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
                     for r in accepted
                 ],
             )
-            if not c.get("backfilled"):
-                # The full walk completed: flag it even if rows were rejected - a
-                # rejected id is still absent, so the next run retries it. Just
-                # the flag: the hub validates required columns against the
-                # merged row, so a partial push needs no echo of the rest.
+            if not rejected and (rows or not c.get("backfilled")):
+                # Only a fully accepted walk may enable the known-page boundary.
                 _push_chunked(
                     hub,
                     "youtube_channels",
@@ -112,11 +115,7 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
 
 
 def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
-    rows = [
-        f
-        for f in hub.pull("feeds", ["id", "fetch", "follow", "scrape_pattern"])
-        if f.get("follow") and f["fetch"] != "x"
-    ]
+    rows = [f for f in hub.pull("feeds", ["id", "fetch", "scrape_pattern"]) if f["fetch"] != "x"]
     known = {a["id"] for a in hub.pull("articles", ["id"])}
     out = {"feeds": len(rows), "articles": 0, "failed": 0, "rejected": 0}
     for f in rows:
@@ -134,7 +133,7 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
                 "provenance",
                 [imported_from("feeds", f["id"], "articles", r["id"]) for r in accepted],
             )
-            known.update(r["id"] for r in items)
+            known.update(r["id"] for r in accepted)
             out["articles"] += len(accepted)
             out["rejected"] += len(rejected)
             log.info("feed_synced", feed=f["id"], new=len(accepted))

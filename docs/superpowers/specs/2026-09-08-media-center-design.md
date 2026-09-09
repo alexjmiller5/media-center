@@ -18,9 +18,11 @@ decided against mobile notifications.
 
 ## Decisions (settled with the user, 2026-09-07/08)
 
-* Tables hold **everything** for every known show and channel, back catalog
-  included, so a source followed later already has its history browsable.
-  `follow` only decides what surfaces in the feed.
+* Tables hold **every available item** from every known show, channel and
+  feed. Shows and channels include their back catalogs; RSS/scrape sources
+  contribute items exposed by their feed or page. A source followed later
+  already has its catalogued history browsable. `follow` only decides what
+  surfaces in the feed.
 * **TV**: every show in `tv_shows` gets its episodes, Gave Up included, so
   watched/unwatched is logged per episode. All shows start `follow = 1`.
 * **YouTube**: all 149 channels from the Notion YouTube Channels DB are
@@ -53,8 +55,8 @@ decided against mobile notifications.
                          life-data hub (D1 + catalog + derivations sweep)
                                    ^ rows/push (tables:write token)
                                    |
-  media-center (Modal, daily cron) -+-- TMDB       (episodes, air dates, watch providers)
-                                    +-- YouTube    (Data API uploads playlist: first page daily, all pages on first sight)
+  media-center (Modal, daily cron) -+-- TMDB       (episodes, air dates)
+                                    +-- YouTube    (Data API uploads playlist: page to known boundary daily, all pages for backfill)
                                     +-- RSS/Atom   (feeds table)
                                     +-- scrapers   (pages with no feed)
   media-center-x (mac mini launchd) ---- x.com via logged-in Chrome  -> same articles table
@@ -98,7 +100,7 @@ and `articles` only - `tv_episodes` has none by design.
 | col                   | type            | notes                                                                                                                                         |
 | --------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | follow                | bool, default 0 | surfaces the channel's videos in the feed                                                                                                     |
-| backfilled            | bool, default 0 | poller flag: full back catalog ingested; daily runs read only the newest page afterwards                                                      |
+| backfilled            | bool, default 0 | poller flag: full back catalog accepted; deltas page to a nonempty fully known page; incomplete writes clear the flag                                                      |
 | title                 | text            | from the YouTube API at seed / first sight                                                                                                    |
 | handle                | text            | `@fireship`                                                                                                                                   |
 | uploads\_playlist\_id | text            | `UU...`, the Data API back-catalog handle                                                                                                     |
@@ -140,7 +142,7 @@ and `articles` only - `tv_episodes` has none by design.
 | col              | type                                 | notes                                                   |
 | ---------------- | ------------------------------------ | ------------------------------------------------------- |
 | follow           | bool, default 1                      | feed surfacing; user flips off per show                 |
-| tmdb\_status     | text, derived `http:tmdb_tv`         | `Returning Series`, `Ended`, ... - gates polling        |
+| tmdb\_status     | text, derived `http:tmdb_tv`         | `Returning Series`, `Ended`, ... - informational; all shows are polled        |
 | watch\_providers | JSON, derived `http:tmdb_tv` from id | US flatrate services, the "where does it stream" answer |
 
 `Watched Some` -> `Watched Parts` on the 6 rows; catalog option list updated.
@@ -171,20 +173,25 @@ Life UI's to-watch section is this view; an agent answers "what's new" with
 Daily Modal cron, one function, sequential over source kinds; per-source
 failures are logged and skipped so one dead feed never blocks the run.
 
-1. **TV**: pull `tv_shows` (`/v1/rows/pull`). For each show with
-   `tmdb_status = 'Returning Series'` or with no episodes yet, list seasons
-   and push any episode ids not yet present. Ended shows are fetched once.
-2. **YouTube**: pull `youtube_channels`. Daily: the first page of each
-   channel's uploads playlist via the Data API (50 newest, 1 quota unit per
-   channel). First sight of a channel: walk every page (1 unit per 50
-   videos, well inside the 10k daily quota even for the whole DB). YouTube's
-   per-channel RSS is not used: it 404s for some channels (Fireship) that
-   the API serves.
-3. **Feeds**: pull `feeds` with `follow = 1`. `rss` sources go through the
-   existing feedparser path; `scrape:*` sources have one small parser each
-   `scrape:links` sources fetch the page and take every `<a href>` matching
-   the row's `scrape_pattern` (link text = title). The seed list's feed URLs
-   are resolved when the rows are created, not guessed here.
+1. **TV**: pull `tv_shows` (`/v1/rows/pull`). For every show, list all
+   seasons and push episode ids not yet present. Follow and show status do
+   not gate ingestion. Ended shows are checked on every run, so an accepted
+   subset never strands the remainder of a partial backfill.
+2. **YouTube**: pull every `youtube_channels` row. Backfill: walk every
+   uploads-playlist page. Delta: walk pages until a nonempty page contains
+   only ids present in the hub at the start of this sync, or the playlist
+   ends. Process mixed known/new pages in full; more than 50 new uploads
+   between runs must not be lost. Before writing a delta's new videos,
+   persist `backfilled = 0`; if that flag write is rejected, skip the channel
+   without writing videos. Set `backfilled = 1` only after every video row
+   is accepted. Rejections and interrupted writes leave a full walk due on
+   the next run. Both flag writes contain only `{id, backfilled, updated_at}`.
+   Per-channel RSS is not used; videos and durations come from the Data API.
+3. **Feeds**: pull every `feeds` row regardless of follow, excluding
+   `fetch = "x"` (handled by the separate job). `rss` uses feedparser;
+   `scrape:links` fetches the page and takes every `<a href>` matching the
+   row's `scrape_pattern`, with link text as the title. Feed URLs and scrape
+   patterns are source data supplied by the user.
 4. Each new item is pushed with `status = 'Not Started'` and a `provenance`
    edge `rel = 'imported_from'`, `from_kind` = the source kind, `from_ref`
    \= the source row id, `detail.created_row = 1`.
@@ -253,6 +260,9 @@ with no new endpoint and no new secret.
 * Unit: parsers against recorded fixtures (YouTube playlist items, TMDB season and
   providers responses, each scraper's saved HTML, feed samples). New-item
   detection given an existing-id set. URL canonicalisation cases.
+* Pipeline regressions: repeated runs with partial acceptance, older YouTube
+  rejections, interrupted chunk writes, more than 50 new uploads, mixed
+  known/new pages, unfollowed RSS/scrape sources, and preserved user fields.
 * Integration (marked, skipped in CI): one real fetch per source kind
   against a live endpoint.
 * Migration: row counts and a sampled diff between each Notion DB and its
@@ -264,7 +274,7 @@ with no new endpoint and no new secret.
 ## Requirements (EARS)
 
 1. The system shall store every media item keyed by its source system's stable id (TMDB episode id, YouTube video id, canonical URL) and never by a generated id where an external one exists.
-2. The system shall ingest all episodes of every row in `tv_shows` and all videos of every row in `youtube_channels`, independent of follow or status.
+2. The system shall ingest all episodes of every row in `tv_shows` and all videos of every row in `youtube_channels`, and available articles from every supported row in `feeds`, independent of follow or status.
 3. When the daily run finds an item whose id is not present, the system shall insert it with status `Not Started` and a provenance edge naming the source row.
 4. While a source has `follow = 0`, its items shall not appear in `media_feed`.
 5. The system shall never send a notification of any kind.
