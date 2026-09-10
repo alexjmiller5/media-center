@@ -277,6 +277,61 @@ def test_sync_youtube_paged_runs_recover_gaps_and_preserve_user_fields(backfille
     assert pipeline.sync_youtube(hub, http, "KEY")["videos"] == 0
 
 
+def test_sync_youtube_empty_channel_is_successful_and_future_uploads_are_ingested():
+    available = False
+    old = {"id": "old", "channel_id": "UCempty", "status": "Watched"}
+    hub = FakeHub(
+        {
+            "youtube_channels": [
+                {"id": "UCempty", "uploads_playlist_id": "UUempty", "backfilled": 0}
+            ],
+            "youtube_videos": [old.copy()],
+        }
+    )
+
+    def handler(request):
+        if request.url.path.endswith("/playlistItems"):
+            if not available:
+                return httpx.Response(
+                    404, json={"error": {"errors": [{"reason": "playlistNotFound"}]}}
+                )
+            return httpx.Response(
+                200, json={"items": [{"snippet": {"resourceId": {"videoId": "new"}}}]}
+            )
+        if request.url.path.endswith("/channels"):
+            assert request.url.params["id"] == "UCempty"
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "UCempty",
+                            "statistics": {"videoCount": "0"},
+                            "contentDetails": {"relatedPlaylists": {"uploads": "UUempty"}},
+                        }
+                    ]
+                },
+            )
+        assert request.url.path.endswith("/videos")
+        return httpx.Response(200, json={"items": []})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with structlog.testing.capture_logs() as logs:
+            for _ in range(2):
+                assert pipeline.sync_youtube(hub, http, "KEY") == {
+                    "channels": 1,
+                    "videos": 0,
+                    "failed": 0,
+                    "rejected": 0,
+                }
+        assert all(entry["log_level"] != "error" for entry in logs)
+        assert hub.tables["youtube_videos"] == [old]
+        available = True
+        assert pipeline.sync_youtube(hub, http, "KEY")["videos"] == 1
+        assert hub.tables["youtube_videos"][0] == old
+        assert hub.tables["youtube_videos"][1]["id"] == "new"
+
+
 def test_sync_youtube_skips_known_video_ids():
     page = fx("playlist_items.json")
     page.pop("nextPageToken")
