@@ -62,6 +62,52 @@ def test_uploads_stops_at_nonempty_fully_known_page(known_ids, expected_pages):
     assert {v["id"] for v in vids} == ({"known", "new"} if known_ids else {"known", "new", "old"})
 
 
+@pytest.mark.parametrize(
+    "status,channel_exists,video_count,playlist",
+    [
+        (404, False, "0", "UUtest"),
+        (404, True, "1", "UUtest"),
+        (404, True, None, "UUtest"),
+        (404, True, "0", "UUother"),
+        (403, True, "0", "UUtest"),
+        (429, True, "0", "UUtest"),
+        (500, True, "0", "UUtest"),
+    ],
+)
+def test_uploads_does_not_hide_other_failures(status, channel_exists, video_count, playlist):
+    def handler(request):
+        if request.url.path.endswith("/channels"):
+            channel = {
+                "id": "UCtest",
+                "statistics": {"videoCount": video_count},
+                "contentDetails": {"relatedPlaylists": {"uploads": playlist}},
+            }
+            return httpx.Response(200, json={"items": [channel] if channel_exists else []})
+        return httpx.Response(status, json={"error": {"errors": [{"reason": "playlistNotFound"}]}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(httpx.HTTPStatusError) as exc:
+            youtube.uploads("UUtest", "KEY", http, channel_id="UCtest")
+    assert exc.value.response.status_code == status
+
+
+def test_uploads_missing_later_page_does_not_accept_partial_backfill():
+    def handler(request):
+        if not request.url.params.get("pageToken"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [{"snippet": {"resourceId": {"videoId": "new"}}}],
+                    "nextPageToken": "next",
+                },
+            )
+        return httpx.Response(404, json={"error": {"errors": [{"reason": "playlistNotFound"}]}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(httpx.HTTPStatusError):
+            youtube.uploads("UUtest", "KEY", http, channel_id="UCtest")
+
+
 def test_durations_batches_by_50_and_parses_iso():
     payload = json.loads((FIX / "videos_list.json").read_text())
     calls = []

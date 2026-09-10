@@ -61,6 +61,10 @@ Instantiate `Settings()` inside functions, never at import time.
   the flag only after all video rows are accepted. Rejections or interrupted
   writes leave a full walk due. Flag writes contain only
   `{id, backfilled, updated_at}`.
+- An initial YouTube uploads-playlist 404 counts as an empty successful sync
+  only when the channel API confirms that channel owns the playlist and has
+  zero public videos. The channel is still polled daily; saved videos are
+  preserved. Missing later pages and other failures remain errors.
 - **The poller writes source facts; never a derived column.** Anything the
   hub or a downstream consumer computes (e.g. `tv_shows.tmdb_status`,
   `tv_shows.watch_providers`) is out of scope - this service only pushes the
