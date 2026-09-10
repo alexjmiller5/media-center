@@ -96,6 +96,7 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
                 key,
                 http,
                 known_ids=known if c.get("backfilled") else None,
+                channel_id=c["id"],
             )
             vids = [v for v in vids if v["id"] not in known]
             durs = youtube.durations([v["id"] for v in vids], key, http) if vids else {}
