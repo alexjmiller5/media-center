@@ -34,7 +34,12 @@ def to_hub_datetime(value: str | None) -> str | None:
 
 
 def uploads(
-    playlist_id: str, key: str, http: httpx.Client, known_ids: set[str] | None = None
+    playlist_id: str,
+    key: str,
+    http: httpx.Client,
+    known_ids: set[str] | None = None,
+    *,
+    channel_id: str | None = None,
 ) -> list[dict]:
     out, token = [], None
     while True:
@@ -42,6 +47,22 @@ def uploads(
         if token:
             params["pageToken"] = token
         resp = http.get(f"{API}/playlistItems", params=params, timeout=30)
+        if resp.status_code == 404 and not token and channel_id:
+            # YouTube can omit the uploads playlist for a channel with no public videos.
+            channel_resp = http.get(
+                f"{API}/channels",
+                params={"part": "contentDetails,statistics", "id": channel_id, "key": key},
+                timeout=30,
+            )
+            channel_resp.raise_for_status()
+            for channel in channel_resp.json().get("items", []):
+                if (
+                    channel.get("id") == channel_id
+                    and channel.get("statistics", {}).get("videoCount") == "0"
+                    and channel.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
+                    == playlist_id
+                ):
+                    return []
         resp.raise_for_status()
         data = resp.json()
         items = data.get("items", [])
