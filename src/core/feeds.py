@@ -8,7 +8,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 
-from core import bluesky
+from core import bluesky, chrome
 from core.hub import now_iso
 from core.watcher import Entry, parse_feed
 
@@ -52,20 +52,24 @@ def scrape_links(html: str, base_url: str, pattern: str) -> list[Entry]:
     parser = _Links()
     parser.feed(html)
     rx = re.compile(pattern)
-    seen, out = set(), []
+    out = {}
     for href, text in parser.links:
         url = canonical_url(urljoin(base_url, href))
-        if not rx.search(url) or url in seen:
+        if not rx.search(url):
             continue
-        seen.add(url)
-        out.append(Entry(guid=url, title=text, url=url, published=None))
-    return out
+        if url not in out:
+            out[url] = Entry(guid=url, title=text, url=url, published=None)
+        elif not out[url].title:
+            out[url].title = text
+    return list(out.values())
 
 
 def entries(feed_row: dict, http: httpx.Client) -> list[Entry]:
     fetch = feed_row["fetch"]
     if fetch == "bluesky":
         return bluesky.entries(feed_row["id"], http)
+    if fetch == "chrome":
+        return chrome.entries(feed_row["id"], http)
     if fetch == "x":
         return []
     resp = http.get(feed_row["id"], timeout=30, follow_redirects=True)
@@ -81,7 +85,7 @@ def article_rows(feed_id: str, items: list[Entry]) -> list[dict]:
     stamp = now_iso()
     return [
         {
-            "id": canonical_url(e.url),
+            "id": e.row_id if e.row_id is not None else canonical_url(e.url),
             "feed_id": feed_id,
             "title": e.title,
             "published_at": (

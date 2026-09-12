@@ -18,11 +18,14 @@ class Entry:
     url: str
     published: datetime | None
     content: dict | None = None
+    row_id: str | None = None  # Adapter-verified identity when URL normalization would lose it.
 
 
 def parse_feed(content: str | bytes) -> list[Entry]:
     """Parse RSS/Atom text into Entries, feed order preserved (newest first)."""
     parsed = feedparser.parse(content)
+    if not parsed.version:
+        raise ValueError("Response is not a recognized RSS/Atom feed")
     entries = []
     for e in parsed.entries:
         struct = e.get("published_parsed") or e.get("updated_parsed")

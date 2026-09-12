@@ -1,5 +1,13 @@
 # Media Center Implementation Plan
 
+> **OBSOLETE AS AN EXECUTABLE RUNBOOK. Do not execute the commands or code
+> below.** This initial plan contains superseded ingestion behavior, token
+> scopes and credential-reuse instructions. Use current AGENTS.md and README.md
+> for implementation and operation. Flighty Gmail ingestion is canceled, not
+> deferred; do not create or reopen its proposed task. Blog sources, changelogs
+> and technical release feeds are distinct choices and must not be substituted
+> without an explicit source decision.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn media-center into a daily poller that fills life-data tables (`youtube_channels`, `youtube_videos`, `feeds`, `articles`, `tv_episodes`) keyed by durable ids, plus a `media_feed` view of unconsumed items from followed sources, and migrate the Notion media DBs into those tables.

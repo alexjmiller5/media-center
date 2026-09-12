@@ -60,7 +60,7 @@ def sync(source_table, http):
     return fn(hub, http, "synthetic-key")
 
 
-def transport(state, item_id, intercept, pushes):
+def transport(state, item_id, intercept, pushes, paths=None):
     def handler(request):
         if request.url.host != "hub.example":
             return httpx.Response(200, json=upstream(request, item_id))
@@ -76,21 +76,41 @@ def transport(state, item_id, intercept, pushes):
                     ]
                 },
             )
-        assert request.url.path == "/v1/rows/push"
+        path = request.url.path
+        assert path in ("/v1/rows/push", "/v1/rows/insert")
+        if paths is not None:
+            paths.append((path, table))
+        if path.endswith("push"):
+            assert table == "youtube_channels" or (
+                table == "tv_episodes"
+                and all(
+                    set(r) <= {"id", "updated_at", "air_date", "title", "runtime_min"}
+                    for r in body["rows"]
+                )
+            ), "new items and edges must use insert"
+
         pushes.append(copy.deepcopy(body))
         response = intercept(body, False)
         if response is not None:
             return response
         stored = {row["id"]: row for row in state.get(table, [])}
+        inserted, existing = [], []
         for row in body["rows"]:
-            stored.setdefault(row["id"], {}).update(row)
+            if path.endswith("push"):
+                stored.setdefault(row["id"], {}).update(row)
+            elif row["id"] in stored:
+                existing.append(row["id"])
+            else:
+                stored[row["id"]] = dict(row)
+                inserted.append(row["id"])
         state[table] = list(stored.values())
         response = intercept(body, True)
-        return (
-            response
-            if response is not None
-            else httpx.Response(200, json={"upserted": len(body["rows"]), "rejected": []})
+        result = (
+            {"upserted": len(body["rows"]), "rejected": []}
+            if path.endswith("push")
+            else {"inserted": inserted, "existing": existing, "rejected": []}
         )
+        return response if response is not None else httpx.Response(200, json=result)
 
     return httpx.MockTransport(handler)
 
@@ -114,7 +134,11 @@ def test_missing_provenance_retries_from_stored_items_after_failure(
             if failure == "rejected" and not persisted:
                 return httpx.Response(
                     200,
-                    json={"upserted": 0, "rejected": [{"id": row["id"]} for row in body["rows"]]},
+                    json={
+                        "inserted": [],
+                        "existing": [],
+                        "rejected": [{"id": row["id"]} for row in body["rows"]],
+                    },
                 )
             if (failure == "edge-http" and not persisted) or (
                 failure == "edge-accepted-http" and persisted
@@ -230,7 +254,12 @@ def test_repair_counts_rejection_before_later_chunk_http_failure_and_retries():
         if calls == 1:
             state["provenance"] = copy.deepcopy(body["rows"][1:])
             return httpx.Response(
-                200, json={"upserted": 199, "rejected": [{"id": body["rows"][0]["id"]}]}
+                200,
+                json={
+                    "inserted": [r["id"] for r in body["rows"][1:]],
+                    "existing": [],
+                    "rejected": [{"id": body["rows"][0]["id"]}],
+                },
             )
         if calls == 2:
             return httpx.Response(503)

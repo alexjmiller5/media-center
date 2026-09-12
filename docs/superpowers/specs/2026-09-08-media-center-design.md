@@ -31,8 +31,10 @@ decided against mobile notifications.
   ThePrimeagen, Dwarkesh Patel, Summoning Salt, infrabren, jtreezy69.
 * **Feeds** (all follow on): Cherri GitHub releases, Notion blog, Raycast
   blog, Waymo Waypoint blog, Home Assistant blog, Works with Home Assistant
-  blog, Chrome what's-new, Flighty newsletter, MacStories, and the X account
-  intcyberdigest.
+  blog, Chrome what's-new, MacStories, and the tech account's original public
+  Bluesky posts. Blog sources, changelogs and technical release feeds are
+  distinct choices; their names or subject matter do not establish equivalence.
+* **Flighty Gmail ingestion**: canceled, not deferred.
 * **Podcasts**: no polling, no follows. Rows are captured manually (Synapse,
   Spotify ids per the existing 2026-09-04 migration task). Life UI note: a
   podcast row in `Not Started` belongs in the to-watch section.
@@ -46,20 +48,19 @@ decided against mobile notifications.
 * Out of scope, permanently: push notifications, an iOS media app, short-form
   video from TikTok/Instagram, Trakt, Apify.
 * Deferred, separate tasks: YouTube subscription two-way sync; watch-history
-  imports (Google Takeout, Netflix, HBO); newsletters via Gmail as a source
-  kind if the Flighty newsletter has no web feed.
+  imports (Google Takeout, Netflix, HBO).
 
 ## Architecture
 
 ```
                          life-data hub (D1 + catalog + derivations sweep)
-                                   ^ rows/push (tables:write token)
+                                   ^ rows/pull, rows/insert, rows/push (tables:read,tables:write)
                                    |
   media-center (Modal, daily cron) -+-- TMDB       (episodes, air dates)
                                     +-- YouTube    (Data API uploads playlist: page to known boundary daily, all pages for backfill)
                                     +-- RSS/Atom   (feeds table)
                                     +-- scrapers   (pages with no feed)
-  media-center-x (mac mini launchd) ---- x.com via logged-in Chrome  -> same articles table
+                                    +-- public Bluesky (original posts by DID)
 
   derivations (Modal): the tv endpoint also returns tmdb_status + watch_providers
   Synapse: youtube-videos and youtube-channels categories retarget to life-data
@@ -174,35 +175,50 @@ Daily Modal cron, one function, sequential over source kinds; per-source
 failures are logged and skipped so one dead feed never blocks the run.
 
 1. **TV**: pull `tv_shows` (`/v1/rows/pull`). For every show, list all
-   seasons and push episode ids not yet present. Follow and show status do
+   seasons and attempt insert-only creation of episode ids not yet present. Follow and show status do
    not gate ingestion. Ended shows are checked on every run, so an accepted
-   subset never strands the remainder of a partial backfill.
+   subset never strands the remainder of a partial backfill. Episodes pulled
+   as live with a matching stored parent receive sparse updates of changed,
+   nonempty air dates and titles and positive runtimes. Parent IDs, episode
+   numbering, user fields and tombstones are never included in those patches.
+   Refreshes do not count as new episodes.
 2. **YouTube**: pull every `youtube_channels` row. Backfill: walk every
    uploads-playlist page. Delta: walk pages until a nonempty page contains
    only ids present in the hub at the start of this sync, or the playlist
    ends. Process mixed known/new pages in full; more than 50 new uploads
    between runs must not be lost. Before writing a delta's new videos,
    persist `backfilled = 0`; if that flag write is rejected, skip the channel
-   without writing videos. Set `backfilled = 1` only after every video row
-   is accepted. Rejections and interrupted writes leave a full walk due on
+   without writing videos. Set `backfilled = 1` only after every video ID
+   is acknowledged as inserted or existing. Rejections and interrupted writes leave a full walk due on
    the next run. Both flag writes contain only `{id, backfilled, updated_at}`.
    Per-channel RSS is not used; videos and durations come from the Data API.
 3. **Feeds**: pull every `feeds` row regardless of follow, excluding
-   `fetch = "x"` (handled by the separate job). `rss` uses feedparser;
+   `fetch = "x"`. `rss` requires feedparser to recognize RSS/Atom, while
+   allowing valid empty feeds and recoverable warnings;
    `scrape:links` fetches the page and takes every `<a href>` matching the
-   row's `scrape_pattern`, with link text as the title. Feed URLs and scrape
-   patterns are source data supplied by the user.
-4. Each new item is pushed with `status = 'Not Started'` and a `provenance`
-   edge `rel = 'imported_from'`, `from_kind` = the source kind, `from_ref`
-   \= the source row id, `detail.created_row = 1`.
-5. Pushing an item that already exists touches nothing: the push sends only
-   the columns the poller owns, and existing rows are skipped by id.
+   row's `scrape_pattern`, retaining canonical order and the first nonempty
+   title across duplicate links. All-empty titles stay empty. `bluesky` uses
+   the public author feed as specified in `2026-09-09-public-bluesky.md`.
+   Feed URLs and scrape patterns are source data supplied by the user.
+4. New items use `/v1/rows/insert` with `status = 'Not Started'`. The atomic
+   insert leaves existing rows and tombstones untouched and returns
+   `inserted`, `existing` and `rejected` outcomes. Missing provenance edges
+   use the same route with `rel = 'imported_from'`, the stored source parent,
+   and `detail.created_row = 1` only for acknowledged inserted item IDs.
+5. Each acknowledged primary chunk records inserted/existing IDs and rejection
+   counts before the next request; only inserted IDs increase new-item counts.
+   After a source failure, stored item IDs
+   including tombstones are re-read before another source is processed. A
+   failed recovery read stops that kind without discarding acknowledged counts.
+   Missing provenance is reconciled from stored parents; only acknowledged
+   new rows in the current run receive `created_row=1`, older/uncertain repairs
+   receive zero. Known items are not reinitialized; TV source facts are the
+   narrow refresh exception and continue using sparse `push`, as do channel
+   flags. Unsupported insert routes and incomplete/ambiguous acknowledgments
+   fail safely, with no fallback to upsert. The compatible hub must deploy first.
 
-The X account runs separately on the mac mini as a launchd job driving the
-logged-in Chrome session (residential IP, no X API): read the account's
-recent posts, push each as an `articles` row with `feed_id` = the
-intcyberdigest feeds row. Same nix-darwin module pattern as the other mini
-jobs.
+X is excluded from the main poller. Any separate adapter requires its own
+scope and deployment; this design does not establish that such a job is active.
 
 ## Derivations (derivations repo)
 
@@ -235,13 +251,15 @@ with no new endpoint and no new secret.
 
 ## Ops
 
-* media-center: fill the two `CHANGEME` fields in the Media Center vault
-  (Modal token id and secret), replace `NOTION_API_KEY`/`SOURCE_DBS` in the
-  ENV item with `LIFE_HUB_URL`, `LIFE_HUB_TOKEN` (a `tables:write` token
-  minted for this app), `TMDB_API_KEY`, `YOUTUBE_API_KEY`. Deploy = push to
-  main, CI runs. Modal cron slot 3 of 5.
-* derivations: no new secret; deploy the tv endpoint change via its CI.
-* mini job: nix-config module for the X scraper, enabled after switch-mini.
+* media-center: configure `LIFE_HUB_URL`, `LIFE_HUB_TOKEN`, `TMDB_API_KEY`
+  and `YOUTUBE_API_KEY` through the project's secrets manifest. The dedicated
+  hub token needs `tables:read,tables:write` on `tv_episodes`, `youtube_videos`,
+  `articles`, `provenance` and `youtube_channels`, plus read on `tv_shows`
+  and `feeds`. A write-only token cannot pull.
+* Release the compatible hub with `/v1/rows/insert` first. Release this poller
+  through a main-branch push or approved manual dispatch, then verify the
+  successful workflow and its SHA. A `[skip ci]` merge skips push deployment.
+* X is excluded from this poller; no X-job setup is part of this runbook.
 
 ## Error handling
 
@@ -249,8 +267,14 @@ with no new endpoint and no new secret.
   completes and reports counts per kind.
 * A `tv_shows` derivation failure leaves the row underived; the hub retries
   on its sweep. The poller never writes a derived column.
-* Duplicate pushes are idempotent by id. A re-run after a partial failure
-  is safe.
+* Acknowledged IDs and rejection counts survive later chunk failures. Atomic
+  insert protects existing IDs even when a request commits after recovery.
+  Lost acknowledgments do not establish creation counts. User fields are
+  never part of a TV refresh patch; those sparse updates retain last-write-wins
+  semantics, without compare-and-set eligibility. A concurrently moved or
+  tombstoned episode can receive source metadata changes, while its user
+  fields, parent and deletion marker remain unchanged. Parent reads and edge
+  inserts are separate operations, not a transaction across the two tables.
 * TMDB or YouTube quota exhaustion aborts that kind for the day, logged, and
   the next run catches up because the cursor is "ids not yet present", not a
   timestamp.
@@ -275,11 +299,10 @@ with no new endpoint and no new secret.
 
 1. The system shall store every media item keyed by its source system's stable id (TMDB episode id, YouTube video id, canonical URL) and never by a generated id where an external one exists.
 2. The system shall ingest all episodes of every row in `tv_shows` and all videos of every row in `youtube_channels`, and available articles from every supported row in `feeds`, independent of follow or status.
-3. When the daily run finds an item whose id is not present, the system shall insert it with status `Not Started` and a provenance edge naming the source row.
+3. When the daily run finds an item whose id is not present, the system shall attempt atomic insert with status `Not Started`, preserving any concurrent existing row. Provenance reconciliation shall insert missing edges from stored parents and use `created_row=1` only for acknowledged inserted item IDs.
 4. While a source has `follow = 0`, its items shall not appear in `media_feed`.
 5. The system shall never send a notification of any kind.
 6. If a source fetch fails, the system shall log the failure and continue with the remaining sources.
 7. The system shall never write a hub-derived column (`tv_shows.tmdb_status`, `tv_shows.watch_providers`) from the poller.
 8. Where a page has no feed, the system shall use the generic link scraper with the row's `scrape_pattern`, tested against a recorded fixture.
 9. The feed view shall order items by `published_at` descending and include only rows in `Not Started` or `Priority`.
-

@@ -1,8 +1,8 @@
 """life-data hub client - the one place media-center reads and writes rows.
 
-Pull whole tables (`/v1/rows/pull`), push only the columns we own
-(`/v1/rows/push`; the hub's upsert touches exactly those). Provenance edges
-are ordinary rows in the `provenance` table.
+Pull whole tables (`/v1/rows/pull`), atomically create missing rows
+(`/v1/rows/insert`), and update only owned columns (`/v1/rows/push`).
+Provenance edges use the same insert-only contract as new items.
 """
 
 import json
@@ -49,6 +49,36 @@ class HubClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def insert(self, table: str, rows: list[dict]) -> dict:
+        """Create absent IDs, preserving existing rows including tombstones. No fallback."""
+        if not rows:
+            return {"inserted": [], "existing": [], "rejected": []}
+        resp = self._http.post(
+            f"{self._url}/v1/rows/insert",
+            json={"table": table, "columns": sorted({k for r in rows for k in r}), "rows": rows},
+            headers=self._headers,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        # A missing/ambiguous acknowledgment is uncertain, never proof of creation.
+        try:
+            if any(
+                not isinstance(result[key], list) for key in ("inserted", "existing", "rejected")
+            ):
+                raise ValueError
+            inserted, existing = set(result["inserted"]), set(result["existing"])
+            rejected = {row["id"] for row in result["rejected"]}
+            if (
+                inserted & existing
+                or inserted & rejected
+                or existing & rejected
+                or inserted | existing | rejected != {row["id"] for row in rows}
+            ):
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("Invalid insert acknowledgment") from None
+        return result
 
 
 def imported_from(

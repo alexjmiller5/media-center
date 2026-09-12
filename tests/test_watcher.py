@@ -24,3 +24,16 @@ def test_parse_atom_github_releases():
     assert e.title == "v2.4.1"
     assert e.url == "https://github.com/electrikmilk/cherri/releases/tag/v2.4.1"
     assert e.published == datetime(2026, 6, 20, 18, 30, tzinfo=UTC)
+
+
+def test_recognized_empty_feeds_and_recoverable_xml_warnings_are_allowed():
+    import feedparser
+
+    for content in (
+        '<rss version="2.0"><channel/></rss>',
+        '<feed xmlns="http://www.w3.org/2005/Atom"/>',
+    ):
+        assert parse_feed(content) == []
+    content = '<rss version="2.0"><channel><item><title>A & B</title><link>https://example.com/post</link></item></channel></rss>'
+    assert feedparser.parse(content).bozo
+    assert parse_feed(content)[0].title == "A & B"
