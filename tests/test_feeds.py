@@ -61,3 +61,21 @@ def test_article_rows_use_canonical_url_as_id():
     assert rows[0]["feed_id"] == "https://blog.example.com/rss"
     assert rows[0]["title"] == "T" and rows[0]["published_at"] is None
     assert rows[0]["status"] == "Not Started" and rows[0]["updated_at"].endswith("Z")
+
+
+def test_scrape_links_keeps_first_nonempty_title_without_changing_canonical_order():
+    entries = feeds.scrape_links(
+        """<a href="/post/first/?utm_source=card"><img src="preview.jpg"></a>
+        <a href="/post/untitled"><img src="other.jpg"></a>
+        <a href="/post/second">Second</a>
+        <a href="https://EXAMPLE.com/post/first">First title</a>
+        <a href="/post/first?utm_source=footer">Later title</a>
+        <a href="/post/untitled/"><img src="still-untitled.jpg"></a>""",
+        "https://example.com/blog",
+        r"/post/",
+    )
+    assert [(e.url, e.title) for e in entries] == [
+        ("https://example.com/post/first", "First title"),
+        ("https://example.com/post/untitled", ""),
+        ("https://example.com/post/second", "Second"),
+    ]

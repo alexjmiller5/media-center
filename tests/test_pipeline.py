@@ -36,6 +36,23 @@ class FakeHub:
         self.tables[table] = list(stored.values())
         return {"upserted": len(rows) - len(rejected), "rejected": rejected}
 
+    def insert(self, table, rows):
+        # Keep the combined write log used by existing assertions.
+        self.pushed.setdefault(table, []).extend(rows)
+        stored = {r["id"]: dict(r) for r in self.tables.get(table, [])}
+        existing = [r["id"] for r in rows if r["id"] in stored]
+        missing = [r for r in rows if r["id"] not in stored]
+        rejected = [self.reject(table, r) for r in missing] if self.reject else []
+        rejected = [r for r in rejected if r]
+        bad_ids = {r["id"] for r in rejected}
+        inserted = []
+        for row in missing:
+            if row["id"] not in bad_ids:
+                stored[row["id"]] = dict(row)
+                inserted.append(row["id"])
+        self.tables[table] = list(stored.values())
+        return {"inserted": inserted, "existing": existing, "rejected": rejected}
+
 
 def http_for(table):
     def handler(request):
@@ -83,13 +100,18 @@ def test_sync_tv_ingests_missing_episodes_with_provenance():
         ]
     )
     out = pipeline.sync_tv(hub, http, "KEY")
-    # Both shows are fetched; the known episode is skipped.
+    # Both shows are fetched; the known episode only receives missing source facts.
     assert out["shows"] == 2 and out["failed"] == 0
     rows = hub.pushed["tv_episodes"]
     # Distinct episode IDs per show; the first show already has one episode.
-    assert len(rows) == 2 * 3 - 1
+    assert len(rows) == 2 * 3
+    assert out["episodes"] == 2 * 3 - 1
+    refresh = next(row for row in rows if row["id"] == known)
+    assert set(refresh) == {"id", "air_date", "title", "runtime_min", "updated_at"}
     by_show = {}
     for r in rows:
+        if r["id"] == known:
+            continue
         by_show.setdefault(r["show_id"], set()).add(r["id"])
     assert known not in by_show["76479"]
     prov = hub.pushed["provenance"]
@@ -99,7 +121,7 @@ def test_sync_tv_ingests_missing_episodes_with_provenance():
         and p["rel"] == "imported_from"
         for p in prov
     )
-    assert len(prov) == len(rows) + 1
+    assert len(prov) == len(rows)
     assert json.loads(next(p for p in prov if p["to_ref"] == known)["detail"]) == {"created_row": 0}
     assert "tv_shows" not in hub.pushed  # EARS-7: the poller never writes the follow list
 
@@ -130,7 +152,9 @@ def test_sync_tv_retries_partial_ended_backfill_without_resetting_status():
     assert pipeline.sync_tv(hub, http, "KEY")["episodes"] == 1
     assert pipeline.sync_tv(hub, http, "KEY")["episodes"] == 0
     assert {r["id"] for r in hub.tables["tv_episodes"]} == set(ids)
-    assert next(r for r in hub.tables["tv_episodes"] if r["id"] == ids[0]) == watched
+    refreshed = next(r for r in hub.tables["tv_episodes"] if r["id"] == ids[0])
+    assert {key: refreshed[key] for key in watched} == watched
+    assert refreshed["air_date"] == season["episodes"][0]["air_date"]
     assert [r["id"] for r in hub.pushed["tv_episodes"]].count(ids[1]) == 1
 
 
@@ -380,7 +404,7 @@ def test_sync_youtube_all_rejected_stays_unfilled_and_no_provenance():
     )
     out = pipeline.sync_youtube(hub, http, "KEY")
     assert out["videos"] == 0
-    assert out["rejected"] == len(page["items"]) + 1
+    assert out["rejected"] == len(page["items"])  # repeated playlist IDs are written once
     assert hub.pushed.get("provenance", []) == []
     assert hub.tables["youtube_channels"][0]["backfilled"] == 0
     assert "youtube_channels" not in hub.pushed

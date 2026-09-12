@@ -1,8 +1,8 @@
 """Daily ingestion: TMDB episodes, YouTube videos, feed articles -> life-data.
 
 Plain Python, no Modal imports. Each source is independent: a failure is
-logged and counted, the run continues. New-item detection is "id not yet in
-the table", so a partial run is safe to repeat.
+logged and counted, the run continues after recovery. New items and provenance
+use atomic insert-if-absent writes; snapshots only avoid redundant requests.
 """
 
 from hashlib import sha256
@@ -25,13 +25,47 @@ def _log_failure(event: str, exc: Exception, **context) -> None:
     log.error(event, error=type(exc).__name__, **context)
 
 
-def _push_chunked(hub, table, rows) -> list[dict]:
-    rejected = []
-    for i in range(0, len(rows), CHUNK):
-        rejected += hub.push(table, rows[i : i + CHUNK])["rejected"]
+def _count_rejected(table, rejected, out) -> set[str]:
+    out["rejected"] += len(rejected)
     if rejected:
         log.warning("rows_rejected", table=table, n=len(rejected))
-    return rejected
+    return {row["id"] for row in rejected}
+
+
+def _push(hub, table, rows, out) -> set[str]:
+    return _count_rejected(table, hub.push(table, rows)["rejected"], out)
+
+
+def _insert(hub, table, rows, out) -> dict:
+    result = hub.insert(table, rows)
+    _count_rejected(table, result["rejected"], out)
+    return result
+
+
+def _ingest(hub, table, rows, known, new_ids, out, counter) -> tuple[int, int]:
+    before, rejected_before = out[counter], out["rejected"]
+    rows = list({row["id"]: row for row in rows}.values())
+    for i in range(0, len(rows), CHUNK):
+        chunk = rows[i : i + CHUNK]
+        result = _insert(hub, table, chunk, out)
+        added = set(result["inserted"])
+        # Acknowledge each chunk before a later request can fail.
+        known.update(added)
+        known.update(result["existing"])
+        new_ids.update(added)
+        out[counter] += len(added)
+    return out[counter] - before, out["rejected"] - rejected_before
+
+
+def _recover_known(hub, table, known, out) -> bool:
+    """A failed write may have committed. Stop this kind if its state cannot be read."""
+    try:
+        known.update(row["id"] for row in hub.pull(table, ["id"], include_deleted=True))
+        return True
+    except Exception as exc:
+        out["failed"] += 1
+        _log_failure("recovery_failed", exc, kind=table)
+        return False
 
 
 def _sync_provenance(hub, source_table, item_table, parent, new_ids, out) -> None:
@@ -48,7 +82,7 @@ def _sync_provenance(hub, source_table, item_table, parent, new_ids, out) -> Non
         missing = [edge for edge in edges if edge["id"] not in known]
         for i in range(0, len(missing), CHUNK):
             # Account per chunk so a later HTTP failure cannot hide earlier rejections.
-            out["rejected"] += len(_push_chunked(hub, "provenance", missing[i : i + CHUNK]))
+            _insert(hub, "provenance", missing[i : i + CHUNK], out)
     except Exception as exc:
         out["failed"] += 1
         _log_failure("provenance_failed", exc, kind=item_table)
@@ -56,30 +90,50 @@ def _sync_provenance(hub, source_table, item_table, parent, new_ids, out) -> Non
 
 def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
     shows = hub.pull("tv_shows", ["id"])
-    known = {e["id"] for e in hub.pull("tv_episodes", ["id"], include_deleted=True)}
+    stored = {
+        e["id"]: e
+        for e in hub.pull(
+            "tv_episodes",
+            ["id", "show_id", "air_date", "title", "runtime_min", "deleted_at"],
+            include_deleted=True,
+        )
+    }
+    known = set(stored)
     new_ids = set()
     out = {"shows": len(shows), "episodes": 0, "failed": 0, "rejected": 0}
     for s in shows:
         try:
             show = tmdb.show(s["id"], key, http)
             rows = []
+            updates = []
             for n in tmdb.season_numbers(show):
-                rows += [
-                    r
-                    for r in tmdb.episode_rows(s["id"], tmdb.season_episodes(s["id"], n, key, http))
-                    if r["id"] not in known
-                ]
-            rejected = _push_chunked(hub, "tv_episodes", rows)
-            bad_ids = {r["id"] for r in rejected}
-            accepted = [r for r in rows if r["id"] not in bad_ids]
-            known.update(r["id"] for r in accepted)
-            new_ids.update(r["id"] for r in accepted)
-            out["episodes"] += len(accepted)
-            out["rejected"] += len(rejected)
-            log.info("tv_synced", show=s["id"], new=len(accepted))
+                for row in tmdb.episode_rows(s["id"], tmdb.season_episodes(s["id"], n, key, http)):
+                    if row["id"] not in known:
+                        rows.append(row)
+                    elif old := stored.get(row["id"]):
+                        if old.get("deleted_at") or old.get("show_id") != s["id"]:
+                            continue
+                        facts = {
+                            col: row[col]
+                            for col in ("air_date", "title", "runtime_min")
+                            if row[col] not in (None, "")
+                            and row[col] != old.get(col)
+                            and (col != "runtime_min" or row[col] > 0)
+                        }
+                        if facts:
+                            updates.append(
+                                {"id": row["id"], **facts, "updated_at": row["updated_at"]}
+                            )
+            added, _ = _ingest(hub, "tv_episodes", rows, known, new_ids, out, "episodes")
+            updates = list({row["id"]: row for row in updates}.values())
+            for i in range(0, len(updates), CHUNK):
+                _push(hub, "tv_episodes", updates[i : i + CHUNK], out)
+            log.info("tv_synced", show=s["id"], new=added)
         except Exception as exc:
             out["failed"] += 1
             _log_failure("tv_failed", exc, show=s["id"])
+            if not _recover_known(hub, "tv_episodes", known, out):
+                break
     _sync_provenance(hub, "tv_shows", "tv_episodes", "show_id", new_ids, out)
     return out
 
@@ -103,35 +157,34 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
             rows = youtube.video_rows(c["id"], vids, durs)
             if rows and c.get("backfilled"):
                 # Persist retry intent before any chunk can be partially accepted.
-                if _push_chunked(
+                if _push(
                     hub,
                     "youtube_channels",
                     [{"id": c["id"], "backfilled": 0, "updated_at": now_iso()}],
+                    out,
                 ):
                     raise RuntimeError("could not mark channel for retry")
-            rejected = _push_chunked(hub, "youtube_videos", rows)
-            bad_ids = {r["id"] for r in rejected}
-            accepted = [r for r in rows if r["id"] not in bad_ids]
-            known.update(r["id"] for r in accepted)
-            new_ids.update(r["id"] for r in accepted)
-            out["videos"] += len(accepted)
-            out["rejected"] += len(rejected)
+            added, rejected = _ingest(hub, "youtube_videos", rows, known, new_ids, out, "videos")
             if not rejected and (rows or not c.get("backfilled")):
                 # Only a fully accepted walk may enable the known-page boundary.
-                _push_chunked(
+                if _push(
                     hub,
                     "youtube_channels",
                     [{"id": c["id"], "backfilled": 1, "updated_at": now_iso()}],
-                )
+                    out,
+                ):
+                    raise RuntimeError("could not mark channel backfilled")
             log.info(
                 "youtube_synced",
                 channel=c["id"],
-                new=len(accepted),
+                new=added,
                 backfill=not c.get("backfilled"),
             )
         except Exception as exc:
             out["failed"] += 1
             _log_failure("youtube_failed", exc, channel=c["id"])
+            if not _recover_known(hub, "youtube_videos", known, out):
+                break
     _sync_provenance(hub, "youtube_channels", "youtube_videos", "channel_id", new_ids, out)
     return out
 
@@ -150,17 +203,13 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
                 for r in feeds_mod.article_rows(f["id"], feeds_mod.entries(f, http))
                 if r["id"] not in known
             ]
-            rejected = _push_chunked(hub, "articles", items)
-            bad_ids = {r["id"] for r in rejected}
-            accepted = [r for r in items if r["id"] not in bad_ids]
-            new_ids.update(r["id"] for r in accepted)
-            known.update(r["id"] for r in accepted)
-            out["articles"] += len(accepted)
-            out["rejected"] += len(rejected)
-            log.info("feed_synced", feed=source_id, new=len(accepted))
+            added, _ = _ingest(hub, "articles", items, known, new_ids, out, "articles")
+            log.info("feed_synced", feed=source_id, new=added)
         except Exception as exc:
             out["failed"] += 1
             _log_failure("feed_failed", exc, feed=source_id)
+            if not _recover_known(hub, "articles", known, out):
+                break
     _sync_provenance(hub, "feeds", "articles", "feed_id", new_ids, out)
     return out
 

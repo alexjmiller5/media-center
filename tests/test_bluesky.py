@@ -160,18 +160,21 @@ def test_bluesky_sync_preserves_user_state_tombstones_and_retries(reject_first):
                     ]
                 },
             )
-        assert request.url.path == "/v1/rows/push"
+        assert request.url.path == "/v1/rows/insert"
         pushed.append(body)
-        rejected = []
+        rejected, inserted, existing_ids = [], [], []
         for row in body["rows"]:
-            if table == "articles" and reject:
+            if any(r["id"] == row["id"] for r in state.get(table, [])):
+                existing_ids.append(row["id"])
+            elif table == "articles" and reject:
                 rejected.append(
                     {"id": row["id"], "col": "content", "message": "synthetic rejection"}
                 )
             else:
                 state.setdefault(table, []).append(row)
+                inserted.append(row["id"])
         return httpx.Response(
-            200, json={"upserted": len(body["rows"]) - len(rejected), "rejected": rejected}
+            200, json={"inserted": inserted, "existing": existing_ids, "rejected": rejected}
         )
 
     with (
@@ -299,9 +302,13 @@ def test_bluesky_failed_walk_is_counted_safe_and_writes_no_partial_history(probl
                         else stored.get(body["table"], [])
                     },
                 )
+            assert request.url.path == "/v1/rows/insert"
             pushes.append(body)
             stored.setdefault(body["table"], []).extend(body["rows"])
-            return httpx.Response(200, json={"upserted": len(body["rows"]), "rejected": []})
+            return httpx.Response(
+                200,
+                json={"inserted": [r["id"] for r in body["rows"]], "existing": [], "rejected": []},
+            )
         if request.url.host == "rss.example":
             return httpx.Response(
                 200,
