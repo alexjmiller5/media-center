@@ -13,7 +13,14 @@ public struct BulkEditResult: Identifiable, Sendable {
   public let connection: MediaConnection
   public let workspace: MediaWorkspace
   public var section: LibrarySection = .feed
-  public var preferences = FeedPreferences()
+  public var preferences = FeedPreferences() {
+    didSet {
+      if let data = try? JSONEncoder().encode(preferences), data.count <= 32 * 1024 {
+        defaults?.set(data, forKey: "feed." + connection.identity.storageKey)
+      }
+    }
+  }
+  @ObservationIgnored private let defaults: UserDefaults?
   public private(set) var records: [MediaIdentity: MediaRecord] = [:]
   public private(set) var sources: [MediaSource] = []
   public private(set) var visible: [MediaItem] = []
@@ -26,14 +33,17 @@ public struct BulkEditResult: Identifiable, Sendable {
   public private(set) var message: String?
   public private(set) var review: MediaIdentity?
   public private(set) var bulkResults: [BulkEditResult] = []
-  public let now: Date
+  public var now: Date { clock() }
+  @ObservationIgnored private let clock: () -> Date
   @ObservationIgnored private let calendar: Calendar
   @ObservationIgnored private var pager: FeedPager?
   @ObservationIgnored private var generation = 0
   private var nextEpisodes: [MediaItem] = []
   private var sourceRows: [SourceIdentity: CoreRow] = [:]
-  public init(connection: MediaConnection, workspace: MediaWorkspace, now: Date = Date(), calendar: Calendar = .current) {
-    self.connection = connection; self.workspace = workspace; self.now = now; self.calendar = calendar
+  public init(connection: MediaConnection, workspace: MediaWorkspace, now: @autoclosure @escaping () -> Date = Date(), calendar: Calendar = .current, defaults: UserDefaults? = nil) {
+    self.connection = connection; self.workspace = workspace; self.clock = now; self.calendar = calendar; self.defaults = defaults
+    if let data = defaults?.data(forKey: "feed." + connection.identity.storageKey), data.count <= 32 * 1024,
+      let saved = try? JSONDecoder().decode(FeedPreferences.self, from: data) { preferences = saved }
   }
   public var cards: [FeedCard] {
     FeedPolicy.cards(items: visible + nextEpisodes, sources: sources, preferences: preferences, now: now, calendar: calendar)
@@ -204,9 +214,19 @@ public struct BulkEditResult: Identifiable, Sendable {
     return true
   }
   @discardableResult public func edit(_ id: MediaIdentity, role: String, value: CoreJSONValue) async -> Bool {
-    guard canEdit(id, role: role), let record = records[id], let binding = connection.bindings.items[id.kind.rawValue], let column = binding.fields[role] else { return false }
-    if role == "status", case .string(let status) = value, binding.statuses[status] == nil { return false }
-    return await apply(id, record: record, binding: binding, values: [column: value])
+    await editFields(id, values: [role: value])
+  }
+  @discardableResult public func editFields(_ id: MediaIdentity, values: [String: CoreJSONValue]) async -> Bool {
+    guard !values.isEmpty, let record = records[id], let binding = connection.bindings.items[id.kind.rawValue] else { return false }
+    var patch: CoreRow = [:]
+    for (role, value) in values {
+      guard canEdit(id, role: role), let column = binding.fields[role] else { return false }
+      if role == "status" {
+        guard case .string(let status) = value, binding.statuses[status] != nil else { return false }
+      }
+      patch[column] = value
+    }
+    return await apply(id, record: record, binding: binding, values: patch)
   }
   @discardableResult public func setConsumption(_ id: MediaIdentity, status: String, date: Date?) async -> Bool {
     guard canEdit(id, role: "status"), let binding = connection.bindings.items[id.kind.rawValue],

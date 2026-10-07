@@ -18,20 +18,25 @@ import XCTest
     #else
     button = identifier.hasPrefix("filter.") ? app.switches[identifier] : identifier.hasPrefix("nav.") ? app.tabBars.buttons[String(identifier.dropFirst(4)).capitalized] : app.buttons[identifier]
     #endif
-    XCTAssertTrue(button.waitForExistence(timeout: 10), identifier)
+    let exists = button.waitForExistence(timeout: 10)
+    XCTAssertTrue(exists, identifier)
     button.tap()
+  }
+  private var writes: String {
+    let text = app.staticTexts["fixture.writes"].firstMatch
+    return (text.value as? String) ?? text.label
   }
   func testNativeNavigationAndMixedFeedFilters() {
     press("nav.library")
-    XCTAssertTrue(app.staticTexts["The quiet city"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["item.article.article-one"].waitForExistence(timeout: 10))
     press("nav.history")
-    XCTAssertTrue(app.staticTexts["A finished story"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["item.article.article-history"].waitForExistence(timeout: 10))
     press("nav.feed")
     press("feed.filters")
     press("filter.article")
     press("filters.done")
-    XCTAssertTrue(app.staticTexts["The quiet city"].exists)
-    XCTAssertFalse(app.staticTexts["North Shore"].exists)
+    XCTAssertTrue(app.buttons["item.article.article-one"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.buttons["item.tvShow.show-one"].exists)
   }
   func testTVShowExpandsIntoEpisodes() {
     press("item.tvShow.show-one")
@@ -47,14 +52,14 @@ import XCTest
     press("capture.save")
     XCTAssertTrue(app.staticTexts["Saved"].waitForExistence(timeout: 10))
     press("capture.done")
-    XCTAssertTrue(app.staticTexts["A newly saved article"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "item.article.captured-")).firstMatch.waitForExistence(timeout: 10))
   }
   func testOpenReturnAndDismissNeverMarksConsumed() {
     press("item.youtubeVideo.video-one")
     press("media.open")
     press("synthetic.return")
     press("review.unchanged")
-    XCTAssertEqual(app.staticTexts["fixture.writes"].label, "Writes: 0")
+    XCTAssertEqual(writes, "Writes: 0")
     XCTAssertTrue(app.staticTexts["Unseen"].exists)
   }
   func testReadOnlySourceFactsHaveNoEditors() {
@@ -69,10 +74,10 @@ import XCTest
     let notes = app.textViews["edit.note"]
     XCTAssertTrue(notes.waitForExistence(timeout: 10))
     notes.tap(); notes.typeText("Keep this for the weekend")
-    XCTAssertEqual(app.staticTexts["fixture.writes"].label, "Writes: 0")
+    XCTAssertEqual(writes, "Writes: 0")
     press("fields.apply")
     XCTAssertTrue(app.staticTexts["Updated"].waitForExistence(timeout: 10))
-    XCTAssertEqual(app.staticTexts["fixture.writes"].label, "Writes: 1")
+    XCTAssertEqual(writes, "Writes: 1")
   }
   func testSeasonBulkShowsPartialReceipts() {
     press("item.tvShow.show-one")

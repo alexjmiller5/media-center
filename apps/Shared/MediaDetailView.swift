@@ -9,6 +9,7 @@ struct MediaDetailView: View {
   @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var scenePhase
   @State private var showReview = false
+  @State private var showFields = false
   @State private var openedExternal = false
   @State private var preview: [MediaItem] = []
   @State private var confirmingSeason = false
@@ -36,6 +37,9 @@ struct MediaDetailView: View {
               Button(item.saved ? "Unsave" : "Save") { Task { changing = true; await library.edit(identity, role: "saved", value: .bool(!item.saved)); changing = false } }
                 .accessibilityIdentifier("media.save").disabled(changing)
             }
+          }
+          if ["note", "tags", "consumedAt"].contains(where: { library.canEdit(identity, role: $0) }) {
+            Button("Edit fields") { showFields = true }.accessibilityIdentifier("media.fields")
           }
           if library.canEdit(identity, role: "status"), let binding = library.connection.bindings.items[identity.kind.rawValue] {
             Menu("Change status") {
@@ -86,6 +90,7 @@ struct MediaDetailView: View {
     }.frame(minWidth: 320, idealWidth: 620, minHeight: 400)
       .task(id: identity) { if identity.kind == .tvShow { await library.loadEpisodes(showID: identity.id) } }
       .onChange(of: scenePhase) { _, phase in if phase == .active && openedExternal { openedExternal = false; showReview = true } }
+      .sheet(isPresented: $showFields) { MediaUserFieldsView(library: library, identity: identity) }
       .sheet(isPresented: $showReview) { review }
       .sheet(isPresented: $confirmingSeason) { seasonPreview }
   }
@@ -114,5 +119,92 @@ struct MediaDetailView: View {
           .accessibilityIdentifier("season.confirm").buttonStyle(.borderedProminent)
       }
     }.padding(28).frame(minWidth: 320)
+  }
+}
+
+struct MediaUserFieldsView: View {
+  @Bindable var library: MediaLibrary
+  let identity: MediaIdentity
+  @Environment(\.dismiss) private var dismiss
+  @State private var note = ""
+  @State private var tags = Set<String>()
+  @State private var date = Date()
+  @State private var hasDate = false
+  @State private var original: [String: CoreJSONValue] = [:]
+  @State private var originalNote = ""
+  @State private var originalTags = Set<String>()
+  @State private var originalDate = Date()
+  @State private var originalHasDate = false
+  @State private var applying = false
+  @State private var result: String?
+  private var binding: RecordBinding? { library.connection.bindings.items[identity.kind.rawValue] }
+  private var tagOptions: [String] {
+    guard let binding, let column = binding.fields["tags"] else { return [] }
+    return library.connection.metadata[binding.table]?.first { $0.column == column }?.options ?? []
+  }
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text("Your fields").font(.title2.bold())
+      Form {
+        if library.canEdit(identity, role: "note") {
+          Section("Notes") { TextEditor(text: $note).frame(minHeight: 100).accessibilityLabel("Notes").accessibilityIdentifier("edit.note") }
+        }
+        if library.canEdit(identity, role: "tags") {
+          Section("Tags") {
+            ForEach(tagOptions, id: \.self) { tag in
+              Toggle(tag, isOn: Binding(get: { tags.contains(tag) }, set: { value in if value { tags.insert(tag) } else { tags.remove(tag) } }))
+            }
+          }
+        }
+        if library.canEdit(identity, role: "consumedAt") {
+          Section("Consumption date") {
+            Toggle("Record a date", isOn: $hasDate)
+            if hasDate { DatePicker("Date", selection: $date, displayedComponents: .date) }
+          }
+        }
+      }
+      if let result { Text(result).accessibilityIdentifier("fields.result") }
+      HStack {
+        Button("Done") { dismiss() }.disabled(applying)
+        Spacer()
+        Button("Apply") { Task { await apply() } }.disabled(applying).accessibilityIdentifier("fields.apply")
+      }
+    }.padding(24).frame(minWidth: 300, idealWidth: 480, minHeight: 340)
+      .task { load() }
+  }
+  private func load() {
+    guard let binding, let row = library.records[identity]?.row else { return }
+    for role in ["note", "tags", "consumedAt"] {
+      if let column = binding.fields[role] { original[role] = row[column] ?? .null }
+    }
+    if case .string(let text) = original["note"] { note = text }
+    if case .string(let json) = original["tags"], let decoded = try? JSONDecoder().decode([String].self, from: Data(json.utf8)) { tags = Set(decoded) }
+    if case .string(let text) = original["consumedAt"] {
+      let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      let day = DateFormatter(); day.locale = Locale(identifier: "en_US_POSIX"); day.dateFormat = "yyyy-MM-dd"
+      if let parsed = iso.date(from: text) ?? ISO8601DateFormatter().date(from: text) ?? day.date(from: text) { date = parsed; hasDate = true }
+    }
+    originalNote = note; originalTags = tags; originalDate = date; originalHasDate = hasDate
+  }
+  private func apply() async {
+    guard let binding else { return }
+    var values: [String: CoreJSONValue] = [:]
+    if library.canEdit(identity, role: "note") {
+      let value: CoreJSONValue = note.isEmpty ? .null : .string(note)
+      if note != originalNote { values["note"] = value }
+    }
+    if library.canEdit(identity, role: "tags"), let json = try? JSONEncoder().encode(tags.sorted()), let text = String(data: json, encoding: .utf8) {
+      let value = CoreJSONValue.string(text)
+      if tags != originalTags { values["tags"] = value }
+    }
+    if library.canEdit(identity, role: "consumedAt"), let column = binding.fields["consumedAt"] {
+      let dateOnly = library.connection.metadata[binding.table]?.first { $0.column == column }?.type == "date"
+      let value: CoreJSONValue = hasDate ? .string(dateOnly ? FeedQueryPlan.day(date, calendar: .current) : FeedQueryPlan.timestamp(date)) : .null
+      if hasDate != originalHasDate || (hasDate && date != originalDate) { values["consumedAt"] = value }
+    }
+    guard !values.isEmpty else { result = "No changes"; return }
+    applying = true; defer { applying = false }
+    if await library.editFields(identity, values: values) { result = "Updated"; load() }
+    else { result = library.message ?? "Could not confirm your changes. Your draft is preserved." }
   }
 }

@@ -54,7 +54,7 @@ import Observation
       catch {
         if error as? HubError == .unavailable, let cached = await snapshots.load(credential: credential) {
           workspace.browseOffline(identity: cached.identity)
-          library = MediaLibrary(connection: cached, workspace: workspace)
+          library = MediaLibrary(connection: cached, workspace: workspace, defaults: .standard)
           await library?.refresh()
         } else { self.error = "Reconnect to validate your access and media configuration." }
       }
@@ -79,7 +79,7 @@ import Observation
     guard let connection = enrollment?.connection, let service = enrollment?.transport else { return }
     try await workspace.connect(identity: connection.identity, service: service)
     try? await snapshots.save(connection)
-    library = MediaLibrary(connection: connection, workspace: workspace)
+    library = MediaLibrary(connection: connection, workspace: workspace, defaults: .standard)
     await library?.refresh()
   }
   func disconnect() async {

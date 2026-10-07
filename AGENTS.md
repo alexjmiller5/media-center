@@ -41,7 +41,10 @@ independent unsent drafts. Browser approval enrolls one revocable device
 credential; replacement devices enroll again. Consumer field edits use
 revision-checked sparse patches. Capture submission uses the Life Data
 adapter and displays Saved only after its resolved saved receipt.
-Opening media and dismissing a review never changes consumption state.
+Catalog-permitted notes, tags and consumption dates are edited through explicit
+revision-checked patches. Feed filters persist in device-local defaults, scoped
+to the validated connection. Opening media and dismissing a review never changes
+consumption state.
 There is no analytics SDK or mobile notification permission.
 
 ### Env vars
