@@ -1,13 +1,18 @@
 # AGENTS.md
 
-media-center: a daily poller that ingests TV episodes (TMDB), YouTube
+Media Center: native iPhone and Mac clients plus a daily poller that ingests TV episodes (TMDB), YouTube
 uploads (YouTube Data API) and articles (RSS, link scraping, public Bluesky
 and Chrome consumer feature updates) into Alex's life-data hub.
 The Python service runs on Modal as a single cron job.
 `packages/MediaKit` contains native client models, feed rules, scoped HTTP
 transport, canonical enrollment policy, bounded content cache and draft state.
 Device enrollment uses browser approval and a device-local Keychain credential.
-Platform app shells are not implemented yet.
+`apps/ios` and `apps/macos` are XcodeGen platform shells; `apps/Shared`
+contains SwiftUI navigation, enrollment, feed/library/history, direct capture,
+source follows and explicit consumption controls. Synthetic launch data is
+Debug-only and uses an isolated test directory. Release clients obtain role
+bindings, catalog metadata and status choices through their scoped Life Data
+consumer connection. They never hold poller or operator credentials.
 
 ## Architecture rule (the one that matters)
 
@@ -16,7 +21,7 @@ Only `app.py` imports `modal` - it is the deployment shim (image, secrets,
 cron schedule). This keeps the logic portable: the same `core` package runs
 in tests or on any future platform.
 
-- No HTTP endpoints - nothing calls this app; the only trigger is the daily
+- The poller has no HTTP endpoints; its only trigger is the daily
   cron (`app.py`'s `daily` function), plus `just run` for an on-demand run.
 - Cron: Modal is the PREFERRED home for schedules - but the Starter plan
   allows **5 deployed crons across ALL apps**, so track the budget. Overflow
@@ -28,6 +33,16 @@ uv · pydantic-settings (env config) · httpx · structlog · pytest · ruff.
 Config comes from env vars only: Modal Secret in the cloud, `op run` locally.
 `.env.tpl` is the canonical secrets manifest (op:// refs, committed).
 Instantiate `Settings()` inside functions, never at import time.
+
+Native clients use Swift 6, SwiftUI, Foundation, Security/Keychain and
+JavaScriptCore, with no external Swift dependencies. Application Support
+holds bounded content pages, validated nonsecret connection snapshots and
+independent unsent drafts. Browser approval enrolls one revocable device
+credential; replacement devices enroll again. Consumer field edits use
+revision-checked sparse patches. Capture submission uses the Life Data
+adapter and displays Saved only after its resolved saved receipt.
+Opening media and dismissing a review never changes consumption state.
+There is no analytics SDK or mobile notification permission.
 
 ### Env vars
 

@@ -63,6 +63,17 @@ import XCTest
     XCTAssertFalse(app.textFields["edit.duration"].exists)
     XCTAssertTrue(app.buttons["media.save"].exists)
   }
+  func testUserNotesAreExplicitlyApplied() {
+    press("item.youtubeVideo.video-one")
+    press("media.fields")
+    let notes = app.textViews["edit.note"]
+    XCTAssertTrue(notes.waitForExistence(timeout: 10))
+    notes.tap(); notes.typeText("Keep this for the weekend")
+    XCTAssertEqual(app.staticTexts["fixture.writes"].label, "Writes: 0")
+    press("fields.apply")
+    XCTAssertTrue(app.staticTexts["Updated"].waitForExistence(timeout: 10))
+    XCTAssertEqual(app.staticTexts["fixture.writes"].label, "Writes: 1")
+  }
   func testSeasonBulkShowsPartialReceipts() {
     press("item.tvShow.show-one")
     press("season.1.finish")
