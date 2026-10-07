@@ -1,0 +1,17 @@
+name: Native checks
+
+on:
+  push:
+    paths: ["packages/MediaKit/**", ".github/workflows/native-check.yml"]
+  pull_request:
+    paths: ["packages/MediaKit/**", ".github/workflows/native-check.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  models:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift test --package-path packages/MediaKit --jobs 2

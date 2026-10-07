@@ -65,6 +65,10 @@ test('native-shaped capture crosses gateway, resolver and real hub without losin
    const url='https://example.test/'+(racing?'racing':'existing');if(racing)race=url;else insertExisting(url);
    expect((await submit(url)).receipt.state).toBe('saved');expect(row(url)).toMatchObject({status:'Finished',saved:1,note:'Keep this',tags:'["kept"]'});
   }
+  const feature='https://www.google.com/chrome/whats-new/archive/#feature-one';insertExisting(feature);
+  const capturedFeature=await submit(feature);expect(capturedFeature.receipt.item.id).toBe(feature);expect(row(feature)).toMatchObject({status:'Finished',saved:1,note:'Keep this'});expect(row('https://www.google.com/chrome/whats-new/archive')).toBeNull();
+  const outage=await submit('https://example.test/resolver-outage');expect(outage.receipt.state).toBe('uncertain');
+  await captureGateway(outage.make(),tenant,env,adapter);expect((await (await captureGateway(outage.get(),tenant,env,adapter)).json()).state).toBe('saved');
   const deleted='https://example.test/deleted';insertExisting(deleted,'2026-01-02');expect((await submit(deleted)).receipt.state).toBe('needs_review');expect(row(deleted).saved).toBe(0);
   const writeCount=writes;expect((await submit('make a task',true)).receipt.state).toBe('needs_review');expect(writes).toBe(writeCount);
   dropReply=true;const lost=await submit('https://example.test/lost');expect(lost.receipt.state).toBe('uncertain');const afterLost=writes;

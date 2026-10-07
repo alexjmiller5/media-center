@@ -3,9 +3,9 @@
 media-center: a daily poller that ingests TV episodes (TMDB), YouTube
 uploads (YouTube Data API) and articles (RSS, link scraping, public Bluesky
 and Chrome consumer feature updates) into Alex's life-data hub.
-No frontend, no webhook - life-data (and
-whatever reads it) is the UI. Python service deployed on Modal as a single
-cron job.
+The Python service runs on Modal as a single cron job.
+`packages/MediaKit` contains the native client domain models and feed rules;
+platform app shells and transport are not implemented yet.
 
 ## Architecture rule (the one that matters)
 
@@ -202,3 +202,13 @@ mint one dedicated CI token pair. Open its stderr URL in the configured
 remote browser session and approve the displayed code. Both verified fields
 are saved together in the project vault through JSON stdin; no plaintext
 credential cache is written. Individual Modal field minting is refused.
+
+## Native domain library
+
+`packages/MediaKit` is a dependency-free Swift package for iOS 17+ and macOS 14+.
+It uses compound media identity, runtime record/source bindings and runtime
+consumption-state mappings. Filter preferences never mutate catalog records.
+Run `swift test --package-path packages/MediaKit --jobs 2` with a private
+`--scratch-path` outside cloud-synced folders. Tests contain only synthetic data.
+Cross-service capture checks and their explicit dependency paths are documented
+in `tests/contracts/README.md`; they run entirely against temporary synthetic state.

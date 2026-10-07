@@ -20,7 +20,17 @@ ws = workspace.build(
     secrets={"life_hub_url": sys.argv[1], "life_hub_token": "synthetic-writer"},
 )
 media_resolution.classify = lambda text: "tasks" if text == "make a task" else "articles"
-media_resolution.extract = lambda category, text: {"Title": "Synthetic article", "URL": text}
+failed_inputs = set()
+
+
+def extract(category, text):
+    if text.endswith("/resolver-outage") and text not in failed_inputs:
+        failed_inputs.add(text)
+        raise TimeoutError("Synthetic classifier outage")
+    return {"Title": "Synthetic article", "URL": text}
+
+
+media_resolution.extract = extract
 for line in sys.stdin:
     payload = json.loads(line)
     with contextlib.redirect_stdout(sys.stderr), workspace.use(ws):
