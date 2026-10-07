@@ -79,6 +79,29 @@ import XCTest
     XCTAssertTrue(app.staticTexts["Updated"].waitForExistence(timeout: 10))
     XCTAssertEqual(writes, "Writes: 1")
   }
+  func testUnsentCaptureCanBeRecoveredWithoutAutomaticSubmission() {
+    press("media.add")
+    let input = app.textViews["capture.input"]
+    XCTAssertTrue(input.waitForExistence(timeout: 10))
+    input.tap(); input.typeText("Save https://example.test/later")
+    press("capture.done")
+    press("media.drafts")
+    let draft = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "draft.capture.")).firstMatch
+    XCTAssertTrue(draft.waitForExistence(timeout: 10)); draft.tap()
+    XCTAssertEqual(app.textViews["capture.input"].value as? String, "Save https://example.test/later")
+    XCTAssertEqual(writes, "Writes: 0")
+    press("capture.save")
+    XCTAssertTrue(app.staticTexts["Saved"].waitForExistence(timeout: 10))
+    XCTAssertEqual(writes, "Writes: 1")
+  }
+  func testSourceFeedStartIsAvailableWithoutWritingOnOpen() {
+    press("nav.sources")
+    press("source.youtubeChannel.channel-one")
+    XCTAssertTrue(app.descendants(matching: .any)["source.feed-start"].firstMatch.waitForExistence(timeout: 10))
+    XCTAssertEqual(writes, "Writes: 0")
+    press("source.done")
+    XCTAssertEqual(writes, "Writes: 0")
+  }
   func testSeasonBulkShowsPartialReceipts() {
     press("item.tvShow.show-one")
     press("season.1.finish")

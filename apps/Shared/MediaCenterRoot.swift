@@ -35,9 +35,11 @@ struct MediaCenterRoot: View {
 struct MediaLibraryView: View {
   @Bindable var model: MediaCenterModel
   @Bindable var library: MediaLibrary
-  @State private var selection: MediaIdentity?
+  @State private var selection: MediaDetailSelection?
+  @State private var sourceSelection: SourceDetailSelection?
   @State private var showFilters = false
   @State private var showAdd = false
+  @State private var showDrafts = false
   @State private var showSettings = false
   var body: some View {
     #if os(macOS)
@@ -53,9 +55,11 @@ struct MediaLibraryView: View {
         Button("Connection") { showSettings = true }
       }.padding(18).navigationSplitViewColumnWidth(min: 170, ideal: 190)
     } detail: { content }
-    .sheet(item: $selection) { id in MediaDetailView(model: model, library: library, identity: id) }
+    .sheet(item: $selection) { id in MediaDetailView(model: model, library: library, identity: id.id) }
     .sheet(isPresented: $showFilters) { FeedFiltersView(library: library) }
     .sheet(isPresented: $showAdd) { MediaCaptureView(library: library) }
+    .sheet(isPresented: $showDrafts) { MediaDraftsView(library: library) }
+    .sheet(item: $sourceSelection) { SourceDetailsView(library: library, identity: $0.id) }
     .sheet(isPresented: $showSettings) { connection }
     #else
     TabView(selection: $library.section) {
@@ -64,9 +68,11 @@ struct MediaLibraryView: View {
           .tabItem { Text(section.rawValue.capitalized) }.tag(section).accessibilityIdentifier("nav.\(section.rawValue)")
       }
     }.onChange(of: library.section) { _, _ in selection = nil; Task { await library.refresh() } }
-    .sheet(item: $selection) { id in NavigationStack { MediaDetailView(model: model, library: library, identity: id) } }
+    .sheet(item: $selection) { id in NavigationStack { MediaDetailView(model: model, library: library, identity: id.id) } }
     .sheet(isPresented: $showFilters) { FeedFiltersView(library: library) }
     .sheet(isPresented: $showAdd) { MediaCaptureView(library: library) }
+    .sheet(isPresented: $showDrafts) { MediaDraftsView(library: library) }
+    .sheet(item: $sourceSelection) { SourceDetailsView(library: library, identity: $0.id) }
     .sheet(isPresented: $showSettings) { connection }
     #endif
   }
@@ -92,18 +98,19 @@ struct MediaLibraryView: View {
               HStack {
                 VStack(alignment: .leading) { Text(source.title).font(.headline); Text(source.followed ? "Following" : "Not following").foregroundStyle(.secondary) }
                 Spacer()
+                Button("Details") { sourceSelection = .init(id: source.identity) }.accessibilityIdentifier("source.\(source.identity.kind.rawValue).\(source.identity.id)")
                 if library.canFollow(source.identity) { Button(source.followed ? "Unfollow" : "Follow") { Task { await library.follow(source.identity, value: !source.followed) } }.disabled(library.loading) }
               }.padding(18).background(.background, in: RoundedRectangle(cornerRadius: 12))
             }
           } else if library.section == .feed {
             ForEach(library.cards) { card in
-              Button { selection = card.identity } label: {
+              Button { selection = .init(id: card.identity) } label: {
                 MediaCardView(item: card.item, title: card.title, subtitle: card.nextEpisode.map { "Next: \($0.title)" } ?? card.sourceTitle, reasons: card.reasons)
               }.buttonStyle(.plain).accessibilityIdentifier("item.\(card.identity.kind.rawValue).\(card.identity.id)")
             }
           } else {
             ForEach(library.matchingItems, id: \.identity) { item in
-              Button { selection = item.identity } label: { MediaCardView(item: item, title: item.title, subtitle: nil, reasons: []) }
+              Button { selection = .init(id: item.identity) } label: { MediaCardView(item: item, title: item.title, subtitle: nil, reasons: []) }
                 .buttonStyle(.plain).accessibilityIdentifier("item.\(item.identity.kind.rawValue).\(item.identity.id)")
             }
           }
@@ -126,6 +133,7 @@ struct MediaLibraryView: View {
       .toolbar {
         ToolbarItem { Button("Filters") { showFilters = true }.accessibilityIdentifier("feed.filters") }
         ToolbarItem { Button("Add") { showAdd = true }.accessibilityIdentifier("media.add") }
+        ToolbarItem { Button("Drafts") { showDrafts = true }.accessibilityIdentifier("media.drafts") }
         ToolbarItem { Button("Refresh") { Task { await library.refresh() } }.disabled(library.loading) }
         #if os(iOS)
         ToolbarItem { Button("Connection") { showSettings = true } }
@@ -142,7 +150,8 @@ struct MediaLibraryView: View {
   }
 }
 
-extension MediaIdentity: @retroactive Identifiable {}
+private struct MediaDetailSelection: Identifiable { let id: MediaIdentity }
+private struct SourceDetailSelection: Identifiable { let id: SourceIdentity }
 
 struct MediaCardView: View {
   let item: MediaItem
@@ -158,7 +167,7 @@ struct MediaCardView: View {
         }.frame(width: 88, height: 88).clipped().clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
       }
       VStack(alignment: .leading, spacing: 7) {
-        Text(kindLabel(item.identity.kind)).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+        Text(kindLabel(item.identity.kind)).textCase(.uppercase).font(.caption.weight(.medium)).foregroundStyle(.secondary)
         Text(title).font(.title3.weight(.semibold)).foregroundStyle(.primary).multilineTextAlignment(.leading)
         if let subtitle { Text(subtitle).font(.callout).foregroundStyle(.secondary) }
         HStack {
@@ -172,9 +181,10 @@ struct MediaCardView: View {
     }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(.background, in: RoundedRectangle(cornerRadius: 14))
       .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.08)))
   }
-  private func kindLabel(_ kind: MediaKind) -> String {
-    switch kind { case .article: "ARTICLE"; case .youtubeVideo: "VIDEO"; case .tvShow: "TV SHOW"; case .tvEpisode: "EPISODE"; case .movie: "FILM"; case .podcastEpisode: "PODCAST" }
-  }
+ }
+
+private func kindLabel(_ kind: MediaKind) -> String {
+  switch kind { case .article: "Article"; case .youtubeVideo: "Video"; case .tvShow: "TV show"; case .tvEpisode: "TV episode"; case .movie: "Film"; case .podcastEpisode: "Podcast episode" }
 }
 
 struct FeedFiltersView: View {
@@ -185,7 +195,7 @@ struct FeedFiltersView: View {
       Form {
         Section("Media") {
           ForEach(MediaKind.allCases.filter { $0 != .tvEpisode }, id: \.self) { kind in
-            Toggle(kind.rawValue, isOn: Binding(get: { library.preferences.kinds.contains(kind) }, set: { value in
+            Toggle(kindLabel(kind), isOn: Binding(get: { library.preferences.kinds.contains(kind) }, set: { value in
               if value { library.preferences.kinds.insert(kind) } else { library.preferences.kinds.remove(kind) }
             })).accessibilityIdentifier("filter.\(kind.rawValue)")
           }
@@ -209,5 +219,31 @@ struct FeedFiltersView: View {
         }
       }.navigationTitle("Feed filters").toolbar { ToolbarItem { Button("Done") { dismiss(); Task { await library.refresh() } }.accessibilityIdentifier("filters.done") } }
     }.frame(minWidth: 320, minHeight: 420)
+  }
+}
+
+struct SourceDetailsView: View {
+  @Bindable var library: MediaLibrary
+  let identity: SourceIdentity
+  @Environment(\.dismiss) private var dismiss
+  @State private var date = Date()
+  @State private var applying = false
+  @State private var result: String?
+  private var source: MediaSource? { library.sources.first { $0.identity == identity } }
+  var body: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      Text(source?.title ?? "Source details").font(.title2.bold())
+      Text(source?.followed == true ? "Following" : "Not following").foregroundStyle(.secondary)
+      Text("The feed includes releases from this date onward. Older items remain in the Library and can be saved individually.").foregroundStyle(.secondary)
+      if source?.followed == true && library.canFollow(identity) {
+        DatePicker("Feed starts", selection: $date).accessibilityIdentifier("source.feed-start")
+        Button("Update feed start") {
+          Task { applying = true; result = await library.setFeedStart(identity, date: date) ? "Updated" : library.message ?? "Could not confirm the change."; applying = false }
+        }.disabled(applying || source?.feedSince == date).accessibilityIdentifier("source.apply")
+      } else { Text("Follow this source before choosing its feed start.") }
+      if let result { Text(result) }
+      Button("Done") { dismiss() }.disabled(applying).accessibilityIdentifier("source.done")
+    }.padding(24).frame(minWidth: 320, idealWidth: 480)
+      .task(id: identity) { date = source?.feedSince ?? library.now }
   }
 }

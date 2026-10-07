@@ -161,6 +161,21 @@ public struct BulkEditResult: Identifiable, Sendable {
     }
     sources = loaded; sourcesComplete = complete
   }
+  public func loadDetail(_ id: MediaIdentity) async {
+    guard let binding = connection.bindings.items[id.kind.rawValue] else { return }
+    let current = generation
+    var query = FeedQueryPlan.browse(binding: binding)
+    query.filter = FeedQueryPlan.predicate("id", "eq", .string(id.id)); query.limit = 1
+    let key = "detail:\(id.kind.rawValue):\(id.id)"
+    await workspace.load(query, key: key)
+    guard current == generation, workspace.connection == connection.identity else { return }
+    guard let row = workspace.rows[key]?.rows.first,
+      let record = try? MediaRecord(kind: id.kind, row: row, binding: binding),
+      record.item.identity == id, !record.item.isDeleted else {
+      message = "Could not load this item’s current details."; return
+    }
+    records[id] = record
+  }
   public func loadEpisodes(showID: String) async {
     episodes = []; episodesComplete = false; bulkResults = []
     guard let binding = connection.bindings.items[MediaKind.tvEpisode.rawValue], let parent = binding.fields["sourceID"] else { return }
@@ -200,12 +215,22 @@ public struct BulkEditResult: Identifiable, Sendable {
     }
   }
   @discardableResult public func follow(_ id: SourceIdentity, value: Bool) async -> Bool {
-    guard canFollow(id), let binding = connection.bindings.sources[id.kind.rawValue], let row = sourceRows[id],
-      let updated = binding.fields["updatedAt"], case .string(let revision) = row[updated],
+    guard canFollow(id), let binding = connection.bindings.sources[id.kind.rawValue],
       let follow = binding.fields["follow"], let since = binding.fields["feedSince"] else { return false }
-    let hub = binding.fields["hubAt"].flatMap { column -> String? in if case .string(let value) = row[column] { return value }; return nil }
     var values: CoreRow = [follow: .bool(value)]
     if value { values[since] = .string(FeedQueryPlan.timestamp(now)) }
+    return await updateSource(id, values: values)
+  }
+  @discardableResult public func setFeedStart(_ id: SourceIdentity, date: Date) async -> Bool {
+    guard canFollow(id), date.timeIntervalSince1970.isFinite,
+      sources.contains(where: { $0.identity == id && $0.followed && !$0.isDeleted }),
+      let column = connection.bindings.sources[id.kind.rawValue]?.fields["feedSince"] else { return false }
+    return await updateSource(id, values: [column: .string(FeedQueryPlan.timestamp(date))])
+  }
+  private func updateSource(_ id: SourceIdentity, values: CoreRow) async -> Bool {
+    guard let binding = connection.bindings.sources[id.kind.rawValue], let row = sourceRows[id],
+      let updated = binding.fields["updatedAt"], case .string(let revision) = row[updated] else { return false }
+    let hub = binding.fields["hubAt"].flatMap { column -> String? in if case .string(let value) = row[column] { return value }; return nil }
     let draft = MediaDraft(edit: .init(table: binding.table, id: id.id, values: values, expectedRevision: .init(updatedAt: revision, hubAt: hub)))
     do { try await workspace.keep(draft) } catch { message = "Could not preserve your source change."; return false }
     await workspace.submit(draft)
@@ -269,9 +294,10 @@ public struct BulkEditResult: Identifiable, Sendable {
       bulkResults.append(.init(id: item.identity, title: item.title, committed: committed))
     }
   }
-  public func capture(_ draft: MediaDraft) async {
-    do { try await workspace.keep(draft) } catch { message = "Could not preserve this capture."; return }
+  @discardableResult public func capture(_ draft: MediaDraft) async -> Bool {
+    do { try await workspace.keep(draft) } catch { message = "Could not preserve this capture."; return false }
     await workspace.submit(draft)
     if workspace.captureReceipts[draft.id]?.state == "saved" { await refresh() }
+    return true
   }
 }

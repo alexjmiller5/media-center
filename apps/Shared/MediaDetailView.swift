@@ -88,7 +88,7 @@ struct MediaDetailView: View {
         #endif
       }.padding(28)
     }.frame(minWidth: 320, idealWidth: 620, minHeight: 400)
-      .task(id: identity) { if identity.kind == .tvShow { await library.loadEpisodes(showID: identity.id) } }
+      .task(id: identity) { await library.loadDetail(identity); if identity.kind == .tvShow { await library.loadEpisodes(showID: identity.id) } }
       .onChange(of: scenePhase) { _, phase in if phase == .active && openedExternal { openedExternal = false; showReview = true } }
       .sheet(isPresented: $showFields) { MediaUserFieldsView(library: library, identity: identity) }
       .sheet(isPresented: $showReview) { review }

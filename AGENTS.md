@@ -44,7 +44,11 @@ adapter and displays Saved only after its resolved saved receipt.
 Catalog-permitted notes, tags and consumption dates are edited through explicit
 revision-checked patches. Feed filters persist in device-local defaults, scoped
 to the validated connection. Opening media and dismissing a review never changes
-consumption state.
+consumption state. The Drafts screen recovers locally preserved captures with
+stable request IDs and offers read-only receipt/current-value checks; it never
+replays them automatically. Full TV-show details are read independently from
+episode cards. Source feed starts use explicit conditional catalog edits and
+never change item consumption state.
 There is no analytics SDK or mobile notification permission.
 
 ### Env vars

@@ -122,4 +122,51 @@ import Testing
     #expect(service.writeCount == 0)
   }
 
+  @Test func showDetailsReadFullParentWithoutChangingItsStatus() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try SyntheticMediaService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.connection, workspace: workspace, now: service.now)
+    await library.refresh()
+    let show = MediaIdentity(kind: .tvShow, id: "show-one")
+    #expect(library.records[show] == nil)
+    await library.loadDetail(show)
+    #expect(library.records[show]?.item.status == "Finished")
+    #expect(library.canEdit(show, role: "note"))
+    #expect(service.writeCount == 0)
+  }
+
+  @Test func rejectedCapturePreservationDoesNotSubmitOrReplacePriorDraft() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try SyntheticMediaService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.connection, workspace: workspace, now: service.now)
+    let prior = MediaDraft(input: "https://example.test/keep", intent: .save)
+    try await workspace.keep(prior)
+    let oversized = MediaDraft(id: prior.id, input: String(repeating: "x", count: 140 * 1024), intent: .save)
+    #expect(await library.capture(oversized) == false)
+    #expect(workspace.drafts == [prior])
+    #expect(service.writeCount == 0)
+  }
+
+  @Test func sourceFeedStartEditsDoNotChangeCatalogConsumption() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try SyntheticMediaService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.connection, workspace: workspace, now: service.now)
+    await library.refresh()
+    #expect(library.cards.contains { $0.identity == .init(kind: .youtubeVideo, id: "video-one") })
+    #expect(await library.setFeedStart(.init(kind: .youtubeChannel, id: "channel-one"), date: service.now))
+    #expect(service.tables["channels"]?.first?["since"] == .string(FeedQueryPlan.timestamp(service.now)))
+    #expect(service.tables["channels"]?.first?["followed"] == .bool(true))
+    #expect(service.tables["videos"]?.first?["state"] == .string("Unseen"))
+    #expect(!library.cards.contains { $0.identity == .init(kind: .youtubeVideo, id: "video-one") })
+  }
+
 }
