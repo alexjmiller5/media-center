@@ -239,6 +239,17 @@ public struct BulkEditResult: Identifiable, Sendable {
     await refresh()
     return true
   }
+  public func save(_ ids: [MediaIdentity], value: Bool) async -> [BulkEditResult] {
+    var seen = Set<MediaIdentity>()
+    var results: [BulkEditResult] = []
+    for id in ids where seen.insert(id).inserted {
+      if records[id] == nil { await loadDetail(id) }
+      let title = records[id]?.item.title ?? "Unavailable item"
+      let committed = await edit(id, role: "saved", value: .bool(value))
+      results.append(.init(id: id, title: title, committed: committed))
+    }
+    return results
+  }
   @discardableResult public func edit(_ id: MediaIdentity, role: String, value: CoreJSONValue) async -> Bool {
     await editFields(id, values: [role: value])
   }

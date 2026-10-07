@@ -43,6 +43,12 @@ struct MediaLibraryView: View {
   @State private var showAdd = false
   @State private var showDrafts = false
   @State private var showSettings = false
+  #if os(macOS)
+  @State private var selectedItems = Set<MediaIdentity>()
+  @State private var savingSelection = false
+  @State private var selectionResults: [BulkEditResult] = []
+  @State private var selectionSaved = true
+  #endif
   var body: some View {
     #if os(macOS)
     NavigationSplitView {
@@ -79,57 +85,49 @@ struct MediaLibraryView: View {
     #endif
   }
   private var connection: some View {
-    VStack(alignment: .leading, spacing: 18) {
+    ScrollView { VStack(alignment: .leading, spacing: 18) {
       Text("Connection").font(.title2.bold())
       Text(library.connection.identity.endpoint.absoluteString).textSelection(.enabled)
       Text(library.workspace.isOnline ? "Connected" : "Offline - cached pages only")
       Text("Disconnect revokes this device’s access. Your unsent drafts remain on this device.").foregroundStyle(.secondary)
       Button("Disconnect", role: .destructive) { Task { await model.disconnect(); showSettings = false } }
       Button("Done") { showSettings = false }
-    }.padding(28)
+    }.padding(28) }.frame(minWidth: 320, minHeight: 360)
   }
   private var content: some View {
     VStack(spacing: 0) {
       if !library.workspace.isOnline { Text("Offline - viewing cached media. Reconnect before making changes.").font(.callout).padding().frame(maxWidth: .infinity).background(.yellow.opacity(0.12)) }
       if let message = library.message { Text(message).font(.callout).padding().foregroundStyle(.red) }
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 12) {
-          Text(subtitle).foregroundStyle(.secondary).padding(.bottom, 10)
-          if library.section == .sources {
-            ForEach(library.sources.filter { !$0.isDeleted }, id: \.identity) { source in
-              HStack {
-                VStack(alignment: .leading) { Text(source.title).font(.headline); Text(source.followed ? "Following" : "Not following").foregroundStyle(.secondary) }
-                Spacer()
-                Button("Details") { sourceSelection = .init(id: source.identity) }.accessibilityIdentifier("source.\(source.identity.kind.rawValue).\(source.identity.id)")
-                if library.canFollow(source.identity) { Button(source.followed ? "Unfollow" : "Follow") { Task { await library.follow(source.identity, value: !source.followed) } }.disabled(library.loading) }
-              }.padding(18).background(.background, in: RoundedRectangle(cornerRadius: 12))
-            }
-          } else if library.section == .feed {
-            ForEach(library.cards) { card in
-              Button { selection = .init(id: card.identity) } label: {
-                MediaCardView(item: card.item, kind: card.identity.kind, title: card.title, subtitle: card.nextEpisode.map { "Next: \($0.title)" } ?? card.sourceTitle, reasons: card.reasons)
-              }.buttonStyle(.plain).accessibilityIdentifier("item.\(card.identity.kind.rawValue).\(card.identity.id)")
-            }
-          } else {
-            ForEach(library.matchingItems, id: \.identity) { item in
-              Button { selection = .init(id: item.identity) } label: { MediaCardView(item: item, kind: item.identity.kind, title: item.title, subtitle: nil, reasons: []) }
-                .buttonStyle(.plain).accessibilityIdentifier("item.\(item.identity.kind.rawValue).\(item.identity.id)")
-            }
-          }
-          if library.loading { ProgressView().frame(maxWidth: .infinity) }
-          if !library.loading && (library.section == .feed ? library.cards.isEmpty : library.matchingItems.isEmpty) && library.section != .sources {
-            VStack(alignment: .leading, spacing: 8) {
-              Text(library.section == .feed ? "Nothing waiting right now" : "No matching items on this page").font(.title3.bold())
-              Text(library.section == .feed ? "Follow sources or save something from your Library. New releases will join this feed." : "Change your filters or load more catalog items.").foregroundStyle(.secondary)
-            }.padding(24)
-          }
-          if library.hasMore { Button("Load more") { Task { await library.loadMore() } }.disabled(library.loading).frame(maxWidth: .infinity) }
-          if library.incomplete { Text("Some sources or pages have not been loaded. These results may be incomplete.").font(.footnote).foregroundStyle(.secondary) }
-          #if DEBUG
-          if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeCount)").font(.caption).accessibilityIdentifier("fixture.writes") }
-          #endif
-        }.padding(24).frame(maxWidth: 850).frame(maxWidth: .infinity)
+      #if os(macOS)
+      HStack {
+        Text("\(selectedItems.count) selected").font(.caption).foregroundStyle(.secondary)
+        Spacer()
+        Button("Open") { if let id = selectedItems.first { selection = .init(id: id) } }.keyboardShortcut(.return, modifiers: []).disabled(selectedItems.count != 1).accessibilityIdentifier("selection.open")
+        Button("Save selected") { saveSelection(true) }.keyboardShortcut("s", modifiers: [.command, .shift]).disabled(selectedItems.isEmpty || savingSelection || !library.workspace.isOnline).accessibilityIdentifier("selection.save")
+        Button("Unsave selected") { saveSelection(false) }.disabled(selectedItems.isEmpty || savingSelection || !library.workspace.isOnline).accessibilityIdentifier("selection.unsave")
+      }.padding(12)
+      List(selection: $selectedItems) { rows }
+        .contextMenu(forSelectionType: MediaIdentity.self) { ids in
+          Button("Open details") { if ids.count == 1, let id = ids.first { selection = .init(id: id) } }.disabled(ids.count != 1)
+        } primaryAction: { ids in
+          if ids.count == 1, let id = ids.first { selection = .init(id: id) }
+        }
+        .onChange(of: library.section) { _, _ in selectedItems.removeAll(); selectionResults = [] }
+        .onChange(of: displayedIDs) { _, ids in selectedItems.formIntersection(ids) }
+      if savingSelection { ProgressView("Updating selected items") }
+      if !selectionResults.isEmpty {
+        Text("\(selectionSaved ? "Saved" : "Unsaved") \(selectionResults.filter(\.committed).count) of \(selectionResults.count) selected items").padding(8)
+        ForEach(selectionResults.filter { !$0.committed }) { result in Text("Could not update \(result.title). Review Drafts before trying again.").foregroundStyle(.red).padding(8) }
       }
+      #if DEBUG
+      if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeCount)").font(.caption).accessibilityIdentifier("fixture.writes").padding(8) }
+      #endif
+      #else
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 12) { rows }
+          .padding(24).frame(maxWidth: 850).frame(maxWidth: .infinity)
+      }
+      #endif
     }.navigationTitle(library.section.rawValue.capitalized)
       .searchable(text: $library.preferences.search, prompt: "Search loaded media")
       .toolbar {
@@ -142,6 +140,57 @@ struct MediaLibraryView: View {
         #endif
       }
   }
+  @ViewBuilder private var rows: some View {
+    Text(subtitle).foregroundStyle(.secondary).padding(.bottom, 10).selectionDisabled(true)
+    if library.section == .sources {
+      ForEach(library.sources.filter { !$0.isDeleted }, id: \.identity) { source in
+        HStack {
+          VStack(alignment: .leading) { Text(source.title).font(.headline); Text(source.followed ? "Following" : "Not following").foregroundStyle(.secondary) }
+          Spacer()
+          Button("Details") { sourceSelection = .init(id: source.identity) }.accessibilityLabel("Details for " + source.title).accessibilityIdentifier("source.\(source.identity.kind.rawValue).\(source.identity.id)")
+          if library.canFollow(source.identity) { Button(source.followed ? "Unfollow" : "Follow") { Task { await library.follow(source.identity, value: !source.followed) } }.disabled(library.loading).accessibilityLabel((source.followed ? "Unfollow " : "Follow ") + source.title) }
+        }.padding(18).background(.background, in: RoundedRectangle(cornerRadius: 12)).selectionDisabled(true)
+      }
+    } else if library.section == .feed {
+      ForEach(library.cards) { card in
+        mediaRow(card.identity, content: MediaCardView(item: card.item, kind: card.identity.kind, title: card.title, subtitle: card.nextEpisode.map { "Next: \($0.title)" } ?? card.sourceTitle, reasons: card.reasons))
+      }
+    } else {
+      ForEach(library.matchingItems, id: \.identity) { item in
+        mediaRow(item.identity, content: MediaCardView(item: item, kind: item.identity.kind, title: item.title, subtitle: nil, reasons: []))
+      }
+    }
+    if library.loading { ProgressView().frame(maxWidth: .infinity) }
+    if !library.loading && (library.section == .feed ? library.cards.isEmpty : library.matchingItems.isEmpty) && library.section != .sources {
+      VStack(alignment: .leading, spacing: 8) {
+        Text(library.section == .feed ? "Nothing waiting right now" : "No matching items on this page").font(.title3.bold())
+        Text(library.section == .feed ? "Follow sources or save something from your Library. New releases will join this feed." : "Change your filters or load more catalog items.").foregroundStyle(.secondary)
+      }.padding(24)
+    }
+    if library.hasMore { Button("Load more") { Task { await library.loadMore() } }.disabled(library.loading).frame(maxWidth: .infinity) }
+    if library.incomplete { Text("Some sources or pages have not been loaded. These results may be incomplete.").font(.footnote).foregroundStyle(.secondary) }
+    #if DEBUG && os(iOS)
+    if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeCount)").font(.caption).accessibilityIdentifier("fixture.writes") }
+    #endif
+  }
+  @ViewBuilder private func mediaRow(_ id: MediaIdentity, content: MediaCardView) -> some View {
+    #if os(macOS)
+    content.tag(id).accessibilityElement(children: .combine).accessibilityIdentifier("item.\(id.kind.rawValue).\(id.id)").listRowSeparator(.hidden)
+    #else
+    Button { selection = .init(id: id) } label: { content }
+      .buttonStyle(.plain).accessibilityIdentifier("item.\(id.kind.rawValue).\(id.id)")
+    #endif
+  }
+  #if os(macOS)
+  private var displayedIDs: Set<MediaIdentity> {
+    Set(library.section == .feed ? library.cards.map(\.identity) : library.section == .sources ? [] : library.matchingItems.map(\.identity))
+  }
+  private func saveSelection(_ value: Bool) {
+    let ids = selectedItems.sorted { ($0.kind.rawValue, $0.id) < ($1.kind.rawValue, $1.id) }
+    savingSelection = true; selectionResults = []; selectionSaved = value
+    Task { selectionResults = await library.save(ids, value: value); savingSelection = false }
+  }
+  #endif
   private var subtitle: String {
     switch library.section {
     case .feed: "Saved for later, in progress, and new from your sources."
@@ -199,9 +248,11 @@ struct FeedFiltersView: View {
       Form {
         Section("Media") {
           ForEach(MediaKind.allCases.filter { $0 != .tvEpisode }, id: \.self) { kind in
+            let configured = library.connection.bindings.items[kind.rawValue] != nil || (kind == .tvShow && library.connection.bindings.items[MediaKind.tvEpisode.rawValue] != nil)
             Toggle(kindLabel(kind), isOn: Binding(get: { library.preferences.kinds.contains(kind) }, set: { value in
               if value { library.preferences.kinds.insert(kind) } else { library.preferences.kinds.remove(kind) }
-            })).accessibilityIdentifier("filter.\(kind.rawValue)")
+            })).disabled(!configured).accessibilityIdentifier("filter.\(kind.rawValue)")
+            if !configured { Text("\(kindLabel(kind)) is not configured in Life Data").font(.footnote).foregroundStyle(.secondary) }
           }
           Text("No selection includes every type.").font(.footnote).foregroundStyle(.secondary)
           Toggle("Include Shorts", isOn: $library.preferences.includeShorts)
@@ -235,7 +286,7 @@ struct SourceDetailsView: View {
   @State private var result: String?
   private var source: MediaSource? { library.sources.first { $0.identity == identity } }
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
+    ScrollView { VStack(alignment: .leading, spacing: 18) {
       Text(source?.title ?? "Source details").font(.title2.bold())
       Text(source?.followed == true ? "Following" : "Not following").foregroundStyle(.secondary)
       Text("The feed includes releases from this date onward. Older items remain in the Library and can be saved individually.").foregroundStyle(.secondary)
@@ -247,7 +298,7 @@ struct SourceDetailsView: View {
       } else { Text("Follow this source before choosing its feed start.") }
       if let result { Text(result) }
       Button("Done") { dismiss() }.disabled(applying).accessibilityIdentifier("source.done")
-    }.padding(24).frame(minWidth: 320, idealWidth: 480)
+    }.padding(24) }.frame(minWidth: 320, idealWidth: 480, minHeight: 360)
       .task(id: identity) { date = source?.feedSince ?? library.now }
   }
 }

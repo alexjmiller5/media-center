@@ -191,4 +191,27 @@ import Testing
     #expect(service.writeCount == 0)
   }
 
+  @Test func selectedSavesKeepConsumptionAndShowFollowsAndReportPartialFailure() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try SyntheticMediaService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.connection, workspace: workspace, now: service.now)
+    await library.refresh()
+    await library.loadEpisodes(showID: "show-one")
+    let show = MediaIdentity(kind: .tvShow, id: "show-one")
+    let first = MediaIdentity(kind: .tvEpisode, id: "episode-one")
+    let second = MediaIdentity(kind: .tvEpisode, id: "episode-two")
+    let results = await library.save([show, first, second, first], value: true)
+    #expect(results.map(\.id) == [show, first, second])
+    #expect(results.map(\.committed) == [true, true, false])
+    #expect(service.writeCount == 3)
+    #expect(service.tables["series"]?.first?["kept"] == .bool(true))
+    #expect(service.tables["series"]?.first?["state"] == .string("Finished"))
+    #expect(service.tables["series"]?.first?["followed"] == .bool(true))
+    #expect(service.tables["episodes"]?[0]["state"] == .string("Unseen"))
+    #expect(service.tables["episodes"]?[1]["kept"] == .bool(false))
+  }
+
 }
