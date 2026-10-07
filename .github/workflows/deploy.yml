@@ -3,6 +3,7 @@ name: deploy
 on:
   push:
     branches: [main]
+    paths: ["app.py", "src/**", "pyproject.toml", "uv.lock", ".env.tpl", "scripts/sync_secrets.py", ".github/workflows/deploy.yml"]
   workflow_dispatch:
 
 jobs:
