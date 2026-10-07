@@ -1,6 +1,6 @@
 # Native Media Center design
 
-Status: written design for review. No implementation or live migration is implied.
+Status: approved product design. Implementation and live migration remain pending.
 
 ## Purpose and accepted behavior
 
@@ -62,7 +62,7 @@ known values. Search matches title and source. Filter choices are runtime
 preferences, not compiled-in source lists. Changing a filter never edits an
 item's status, follow state or save intent.
 
-Proposed first-release defaults, subject to review:
+Approved first-release defaults:
 
 - Open content in its original app/site; no embedded player or full article
   renderer in the first release.
@@ -133,7 +133,7 @@ union or save retry. A known future item can be saved and viewed as upcoming,
 but it is not described as available to consume.
 
 Default display places Priority items first, then In Progress, then other
-eligible items newest first. This is a proposed ranking default. The user may
+eligible items newest first. This is the approved ranking default. The user may
 select a chronological sort instead. Unknown durations never become zero and
 unknown dates never become today's date.
 
@@ -250,7 +250,7 @@ back to unconditional upsert.
    absent provenance or a missing source does not establish saved intent. Present
    ambiguous prior captures for review without silently queueing the full catalog.
 5. Establish a rollout boundary for already-followed sources without inventing
-   historical follow times. Proposed default is activation time, with retained
+   historical follow times. Approved default is activation time, with retained
    saved/progress/priority items and a visible way to browse/save older releases.
 6. Provision and verify consumer contracts/credentials; test both allowed actions
    and denied unrelated records/fields with synthetic data before enrollment.
@@ -321,9 +321,10 @@ EARS requirements:
 
 ## Review checklist
 
-Accepted product decisions are listed at the top. Proposed defaults needing
-written-spec review are external playback, return-time in-app confirmation,
+Accepted product decisions are listed at the top. Approved defaults are external playback, return-time in-app confirmation,
 online-only edits with cached browsing, device-local filters, ranking and the
-activation boundary for existing follows. Service contract work above must be
-resolved in the implementation plan; no unsupported API, full replica, invented
+activation boundary for existing follows. Service contract work above is specified in the linked implementation plans and
+requires their concrete interface review before wiring; no unsupported API, full replica, invented
 history or personal-data import is approved by this document alone.
+
+Implementation plan: [Native Media Center](../plans/2026-10-07-native-media-center.md).
