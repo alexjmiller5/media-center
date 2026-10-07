@@ -1,10 +1,54 @@
-# media-center
+# Media Center
 
-A daily poller that ingests TV episodes (TMDB), YouTube uploads (YouTube
+Native iPhone and Mac apps combine saved articles, videos and next TV episodes
+in one feed. A daily poller ingests TV episodes (TMDB), YouTube uploads (YouTube
 Data API) and articles (RSS, generic link scraping, public Bluesky and Chrome
-consumer feature updates) into a life-data hub. No frontend - the hub (and
-whatever reads it) is the UI.
-Runs on [Modal](https://modal.com) as a single daily cron job.
+consumer feature updates) into Life Data.
+The poller runs on [Modal](https://modal.com) as a single daily cron job.
+
+## Native clients
+
+The apps require iOS 17+ or macOS 14+. They use the supported Life Data API;
+Life UI is another client of that service, not their backend.
+
+Enter your Life Data HTTPS address, open browser approval, and verify the
+device code. Each device enrolls its own scoped credential in Keychain.
+The service operator configures the `media-center` enrollment profile,
+runtime media field/status bindings, catalog metadata and capture adapter.
+An unavailable or changed profile requires validated enrollment; clients
+never need provider identifiers, operator tokens or poller credentials.
+Replacement devices enroll again. Disconnect revokes that device's access.
+
+- Feed combines explicit saves, Priority/In Progress and releases from followed
+  sources after their activation date. Older catalog items remain saveable.
+- Library and History expose catalog records through runtime filters. A new
+  item's Not Started status does not mean it was saved.
+- Save, follow and consumption are separate actions. Opening an original link,
+  returning or dismissing the review never records consumption.
+- TV cards show the next aired regular episode. Season changes require an exact
+  preview and show individual receipts, including partial failures.
+- Add waits for a resolved saved receipt. Offline input and unconfirmed changes
+  remain device-local drafts; nothing retries automatically.
+- Already-viewed pages support bounded offline browsing. Filter preferences stay
+  on each device; shared saves, follows and consumption live in Life Data.
+
+No analytics or mobile notifications are included. Signed installation artifacts
+are not published yet. For development, generate the platform projects with
+XcodeGen and build `MediaCenter` from `apps/ios` or `apps/macos` using Xcode.
+Keep derived data outside cloud-synced folders.
+
+```bash
+swift test --package-path packages/MediaKit --jobs 2
+xcodegen generate --spec apps/macos/project.yml
+xcodegen generate --spec apps/ios/project.yml
+```
+
+Native CI runs both platform builds and synthetic UI interactions, including
+large-text iPhone layouts. Fixtures never enroll a personal device. The
+generated canonical enrollment policy is checked against its pinned Life Data
+revision; see [service contracts](tests/contracts/README.md).
+
+## Daily ingestion
 
 Every tracked show, channel and supported feed is catalogued regardless of
 `follow`; follow only controls what a reader surfaces. Existing items keep
@@ -42,8 +86,8 @@ instructions. `published_at` is null; no publication timestamp is invented.
 Only new IDs are submitted, and the pipeline's atomic insert preserves
 existing rows, user state and tombstones.
 
-No notifications are sent. X is skipped by this poller. Flighty Gmail
-ingestion is canceled; podcasts have no polling or subscriptions here.
+No notifications are sent. X is skipped by this poller. Podcasts have no
+polling or subscriptions here.
 
 ## Durability limits
 
@@ -76,6 +120,8 @@ being polled for future uploads.
 app.py            Modal shim - image, secrets, cron schedule
 src/core/         business logic (plain Python, portable)
 tests/            pytest
+packages/MediaKit shared native model, transport and enrollment policy
+apps/             iPhone/Mac shells, shared SwiftUI and synthetic UI tests
 .env.tpl          secrets manifest (1Password op:// refs, committed)
 justfile          test / check / fmt / logs / sync-secrets / deploy / run
 ```
@@ -85,11 +131,10 @@ justfile          test / check / fmt / logs / sync-secrets / deploy / run
 `just test` / `just check` / `just fmt` / `just logs` / `just sync-secrets` /
 `just deploy` / `just run` - see AGENTS.md.
 
-Normal releases use the GitHub deploy workflow on a main-branch push or an
+Poller releases use the GitHub deploy workflow on a main-branch service change or an
 approved manual dispatch. Verify the workflow SHA and successful completion;
-`[skip ci]` suppresses push deployment. The September 8 implementation plan
-is obsolete as an executable runbook; current operating behavior is here
-and in AGENTS.md.
+`[skip ci]` suppresses push deployment. Native and documentation changes do
+not trigger poller deployment.
 
 ## Manual setup
 

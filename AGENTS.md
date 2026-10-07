@@ -2,7 +2,7 @@
 
 Media Center: native iPhone and Mac clients plus a daily poller that ingests TV episodes (TMDB), YouTube
 uploads (YouTube Data API) and articles (RSS, link scraping, public Bluesky
-and Chrome consumer feature updates) into Alex's life-data hub.
+and Chrome consumer feature updates) into a Life Data hub.
 The Python service runs on Modal as a single cron job.
 `packages/MediaKit` contains native client models, feed rules, scoped HTTP
 transport, canonical enrollment policy, bounded content cache and draft state.
@@ -174,7 +174,7 @@ There is no analytics SDK or mobile notification permission.
 - Feed logs use hashed source IDs, error classes/HTTP statuses and counts;
   remote messages, content and rejection payloads are never logged.
 - It never sends notifications.
-- Flighty Gmail ingestion is canceled. Podcasts have no polling or
+- Podcasts have no polling or
   subscriptions here. Source identities and feed choices remain data;
   blog feeds, changelogs and technical release feeds are not interchangeable.
 - Datetimes sent to the hub are millisecond ISO-8601 (`to_hub_datetime`),
