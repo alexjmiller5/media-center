@@ -170,6 +170,21 @@ import XCTest
     XCTAssertFalse(ui.textFields["edit.duration"].exists)
     XCTAssertTrue(ui.buttons["media.save"].exists)
   }
+  func testSavedItemSurvivesUnfollowingWithoutChangingConsumption() {
+    press("item.youtubeVideo.video-one")
+    press("media.save")
+    XCTAssertTrue(ui.buttons.matching(NSPredicate(format: "identifier == %@ AND label == %@", "media.save", "Unsave")).firstMatch.waitForExistence(timeout: 10))
+    ui.buttons["Done"].firstMatch.tap()
+    press("nav.sources")
+    let unfollow = ui.buttons["Unfollow Low Tide Studio"]
+    XCTAssertTrue(unfollow.waitForExistence(timeout: 10)); reveal(unfollow); unfollow.tap()
+    XCTAssertTrue(ui.buttons["Follow Low Tide Studio"].waitForExistence(timeout: 10))
+    press("nav.feed")
+    press("item.youtubeVideo.video-one")
+    XCTAssertEqual(ui.buttons["media.save"].label, "Unsave")
+    XCTAssertTrue(ui.staticTexts["Unseen"].exists)
+    XCTAssertEqual(writes, "Writes: 2")
+  }
   func testUserNotesAreExplicitlyApplied() {
     press("item.youtubeVideo.video-one")
     press("media.fields")
@@ -217,6 +232,43 @@ import XCTest
     press("media.save")
     XCTAssertTrue(ui.textFields["enroll.endpoint"].waitForExistence(timeout: 10))
     XCTAssertFalse(ui.buttons["media.save"].exists)
+  }
+  func testOfflineCapturePreservesInputAndDisablesSubmission() {
+    app.terminate(); app.launchArguments.append("--offline"); app.launch()
+    press("media.add")
+    let input = ui.textViews["capture.input"]
+    XCTAssertTrue(input.waitForExistence(timeout: 10))
+    input.tap(); input.typeText("Save https://example.test/offline")
+    reveal(ui.buttons["capture.save"])
+    XCTAssertFalse(ui.buttons["capture.save"].isEnabled)
+    press("capture.done")
+    XCTAssertEqual(writes, "Writes: 0")
+    press("media.drafts")
+    XCTAssertTrue(ui.staticTexts["Reconnect to validate access before recovering drafts."].exists)
+    XCTAssertTrue(ui.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "draft.capture.")).firstMatch.exists)
+  }
+  func testConflictingEditShowsPreservedDraftWithoutSuccess() {
+    app.terminate(); app.launchArguments.append("--conflicting-writes"); app.launch()
+    press("item.youtubeVideo.video-one")
+    press("media.save")
+    XCTAssertTrue(ui.staticTexts["This item changed elsewhere. Review its current values before trying again."].waitForExistence(timeout: 10))
+    XCTAssertEqual(ui.buttons["media.save"].label, "Save")
+    XCTAssertEqual(writes, "Writes: 0")
+  }
+  func testUncertainCaptureRequiresReadOnlyReceiptCheck() {
+    app.terminate(); app.launchArguments.append("--uncertain-writes"); app.launch()
+    press("media.add")
+    let input = ui.textViews["capture.input"]
+    XCTAssertTrue(input.waitForExistence(timeout: 10))
+    input.tap(); input.typeText("Save https://example.test/uncertain")
+    press("capture.save")
+    XCTAssertTrue(ui.staticTexts["Awaiting confirmation"].waitForExistence(timeout: 10))
+    XCTAssertFalse(ui.staticTexts["Saved"].exists)
+    reveal(ui.buttons["Check receipt"])
+    ui.buttons["Check receipt"].tap()
+    XCTAssertTrue(ui.staticTexts["Awaiting confirmation"].exists)
+    press("capture.done")
+    XCTAssertEqual(writes, "Writes: 0")
   }
   func testNonGregorianCalendarNeverIncludesFutureEpisodesInBulk() {
     app.terminate()

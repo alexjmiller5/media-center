@@ -26,7 +26,11 @@ import Observation
     snapshots = ConnectionSnapshotStore(directory: root.appendingPathComponent("Connections"))
     #if DEBUG
     if args.contains("--synthetic") {
-      do { synthetic = try SyntheticMediaService() } catch { self.error = "Could not initialize preview data." }
+      do {
+        synthetic = try SyntheticMediaService()
+        if args.contains("--conflicting-writes") { synthetic?.nextWriteError = .conflict }
+        if args.contains("--uncertain-writes") { synthetic?.nextWriteError = .uncertain }
+      } catch { self.error = "Could not initialize preview data." }
       return
     }
     #endif
@@ -42,6 +46,7 @@ import Observation
         try await workspace.connect(identity: synthetic.connection.identity, service: synthetic)
         library = MediaLibrary(connection: synthetic.connection, workspace: workspace, now: synthetic.now, calendar: ProcessInfo.processInfo.arguments.contains("--buddhist-calendar") ? Calendar(identifier: .buddhist) : .current)
         await library?.refresh()
+        if ProcessInfo.processInfo.arguments.contains("--offline") { workspace.isOnline = false }
       } catch { self.error = "Could not open preview data." }
       return
     }
