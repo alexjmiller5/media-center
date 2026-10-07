@@ -9,10 +9,12 @@ import Testing
   var patchCount = 0
   var captureCount = 0
   var patchError: HubError?
+  var queryError: HubError?
   var delayPatch = false
   var patchContinuation: CheckedContinuation<PatchReceipt, any Error>?
   func query(_ request: RowQuery) async throws -> RowPage {
-    try await withCheckedThrowingContinuation { queryContinuation = $0 }
+    if let queryError { throw queryError }
+    return try await withCheckedThrowingContinuation { queryContinuation = $0 }
   }
   func patch(_ edit: ConditionalEdit) async throws -> PatchReceipt {
     patchCount += 1
@@ -152,5 +154,33 @@ import Testing
     #expect(workspace.drafts == [draft])
     await workspace.submit(draft)
     #expect(service.patchCount == 1)
+  }
+  @Test func viewedPagesRecoverOfflineButRevocationNeverUsesCache() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let cache = MediaCache(directory: root.appendingPathComponent("cache"))
+    let store = DraftStore(directory: root.appendingPathComponent("drafts"))
+    let service = DelayedService()
+    let query = RowQuery(table: "items", columns: ["id"])
+    let first = MediaWorkspace(drafts: store, cache: cache)
+    try await first.connect(identity: fixture(), service: service)
+    let task = Task { await first.load(query, key: "feed") }
+    while service.queryContinuation == nil { await Task.yield() }
+    service.queryContinuation?.resume(
+      returning: .init(rows: [["id": .string("one")]], nextCursor: "next"))
+    await task.value
+    let next = MediaWorkspace(drafts: store, cache: cache)
+    try await next.connect(identity: fixture(), service: service)
+    service.queryError = .unavailable
+    await next.load(query, key: "feed")
+    #expect(next.rows["feed"]?.rows.first?["id"] == .string("one"))
+    #expect(next.cachedPages.contains("feed"))
+    #expect(!next.isOnline)
+    next.isOnline = true
+    service.queryError = .revoked
+    await next.load(query, key: "feed")
+    #expect(next.rows.isEmpty)
+    #expect(next.connection == nil)
+    #expect(next.error == .revoked)
   }
 }

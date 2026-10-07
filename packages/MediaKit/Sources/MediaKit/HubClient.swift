@@ -69,7 +69,7 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
   }
   public func close() { session.invalidateAndCancel() }
 
-  func reply(path: String, method: String = "GET", body: Data? = nil, limit: Int = 65536)
+  public func reply(path: String, method: String = "GET", body: Data? = nil, limit: Int = 65536)
     async throws -> CoreSessionReply
   {
     var request = URLRequest(url: endpoint.appendingPathComponent(path))

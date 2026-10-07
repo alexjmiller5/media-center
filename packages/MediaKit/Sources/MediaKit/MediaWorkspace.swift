@@ -24,14 +24,19 @@ public enum EditState: Equatable, Sendable {
   public private(set) var captureReceipts: [UUID: CaptureReceipt] = [:]
   public private(set) var editStates: [UUID: EditState] = [:]
   public private(set) var currentValues: [UUID: CoreRow] = [:]
+  public private(set) var cachedPages = Set<String>()
   public private(set) var error: HubError?
   public var isOnline = true
   @ObservationIgnored private let store: DraftStore
+  @ObservationIgnored private let cache: MediaCache?
   @ObservationIgnored private var service: (any MediaService)?
   @ObservationIgnored private var generation: UInt64 = 0
   @ObservationIgnored private var sendingCaptures = Set<UUID>()
 
-  public init(drafts: DraftStore) { store = drafts }
+  public init(drafts: DraftStore, cache: MediaCache? = nil) {
+    store = drafts
+    self.cache = cache
+  }
 
   /// Caller completes session/config/grant revalidation before connecting or recovering drafts.
   public func connect(identity: ConnectionIdentity, service: any MediaService) async throws {
@@ -57,18 +62,70 @@ public enum EditState: Equatable, Sendable {
     captureReceipts = [:]
     editStates = [:]
     currentValues = [:]
+    cachedPages = []
     sendingCaptures = []
     error = nil
   }
   public func load(_ query: RowQuery, key: String) async {
-    guard let service else { return }
+    guard let connection else { return }
     let current = generation
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .sortedKeys
+    guard let queryData = try? encoder.encode(query) else {
+      error = .invalidRequest
+      return
+    }
+    let cacheKey = key + ":" + ConnectionIdentity.digest(queryData)
+    if !isOnline {
+      await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current)
+      return
+    }
+    guard let service else { return }
     do {
       let result = try await service.query(query)
       guard current == generation else { return }
       rows[key] = result
+      cachedPages.remove(key)
       error = nil
-    } catch { if current == generation { self.error = error as? HubError ?? .unavailable } }
+      // A disposable cache write failing must not hide a valid network page.
+      try? await cache?.store(
+        .init(items: [], nextCursor: result.nextCursor, rows: result.rows), key: cacheKey,
+        connection: connection)
+    } catch {
+      guard current == generation else { return }
+      let reason = error as? HubError ?? .unavailable
+      if reason == .revoked {
+        disconnect()
+        await cache?.removePages(connection: connection)
+        self.error = reason
+      } else if reason == .unavailable {
+        isOnline = false
+        self.error = reason
+        await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current)
+      } else {
+        rows[key] = nil
+        cachedPages.remove(key)
+        self.error = reason
+      }
+    }
+  }
+  public func browseOffline(identity: ConnectionIdentity) {
+    disconnect()
+    connection = identity
+    isOnline = false
+  }
+  private func cached(
+    key: String, cacheKey: String, connection: ConnectionIdentity, generation: UInt64
+  ) async {
+    let page = await cache?.page(key: cacheKey, connection: connection)
+    guard generation == self.generation else { return }
+    if let page {
+      rows[key] = .init(rows: page.rows, nextCursor: page.nextCursor)
+      cachedPages.insert(key)
+    } else {
+      rows[key] = nil
+      cachedPages.remove(key)
+    }
   }
   public func keep(_ draft: MediaDraft) async throws {
     guard let connection else { throw HubError.revoked }

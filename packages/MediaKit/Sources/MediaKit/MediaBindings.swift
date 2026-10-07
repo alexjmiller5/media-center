@@ -4,14 +4,20 @@ public enum ConsumptionState: String, Codable, CaseIterable, Sendable {
   case notStarted, inProgress, priority, finished, gaveUp, watchedParts, other
   public var isActive: Bool { ![Self.finished, .gaveUp, .watchedParts].contains(self) }
 }
+public enum DurationUnit: String, Codable, Sendable { case seconds, minutes, milliseconds }
 public struct RecordBinding: Codable, Equatable, Sendable {
   public var table: String
   public var fields: [String: String]
   public var statuses: [String: ConsumptionState]
-  public init(table: String, fields: [String: String], statuses: [String: ConsumptionState] = [:]) {
+  public var durationUnit: DurationUnit?
+  public init(
+    table: String, fields: [String: String], statuses: [String: ConsumptionState] = [:],
+    durationUnit: DurationUnit? = nil
+  ) {
     self.table = table
     self.fields = fields
     self.statuses = statuses
+    self.durationUnit = durationUnit
   }
   public func state(for status: String) -> ConsumptionState? { statuses[status] }
 }
@@ -76,6 +82,9 @@ public struct MediaBindings: Codable, Equatable, Sendable {
     _ binding: RecordBinding, role: String, required: [String],
     scopes: Set<String>, metadata: [String: [PropertyMetadata]]
   ) throws {
+    if binding.fields["duration"] != nil && binding.durationUnit == nil {
+      throw BindingError.missingField(role, "durationUnit")
+    }
     for field in required where binding.fields[field] == nil {
       throw BindingError.missingField(role, field)
     }
@@ -86,7 +95,7 @@ public struct MediaBindings: Codable, Equatable, Sendable {
       "id": text, "title": text, "status": ["select"], "saved": ["bool"], "follow": ["bool"],
       "updatedAt": date, "hubAt": date, "deletedAt": date, "feedSince": date,
       "release": date, "consumedAt": date, "duration": ["int", "number", "float"],
-      "season": ["int"], "episode": ["int"], "isShort": ["bool"], "sourceID": text,
+      "season": ["int"], "episode": ["int"], "isShort": ["bool"], "sourceID": text.union(["ref"]),
       "url": text, "imageURL": text, "tags": ["multi_select"], "note": text,
     ]
     for (field, column) in binding.fields {

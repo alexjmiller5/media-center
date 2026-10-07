@@ -42,9 +42,11 @@ public struct ConnectionIdentity: Codable, Hashable, Sendable {
 
 public struct CachedMediaPage: Codable, Equatable, Sendable {
   public var items: [MediaItem]
+  public var rows: [CoreRow]
   public var nextCursor: String?
-  public init(items: [MediaItem], nextCursor: String?) {
+  public init(items: [MediaItem], nextCursor: String?, rows: [CoreRow] = []) {
     self.items = items
+    self.rows = rows
     self.nextCursor = nextCursor
   }
 }
@@ -75,7 +77,8 @@ public actor MediaCache {
     guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
       size <= maxBytes, let data = try? Data(contentsOf: url),
       let entry = try? JSONDecoder().decode(Entry.self, from: data),
-      entry.connection == connection, entry.key == key, entry.page.items.count <= 200
+      entry.connection == connection, entry.key == key, entry.page.items.count <= 200,
+      entry.page.rows.count <= 200
     else { return nil }
     try? FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: url.path)
     return entry.page
@@ -84,7 +87,7 @@ public actor MediaCache {
     _ page: CachedMediaPage, key: String, connection: ConnectionIdentity, now: Date = Date()
   ) throws {
     let data = try JSONEncoder().encode(Entry(connection: connection, key: key, page: page))
-    guard page.items.count <= 200, data.count <= maxBytes else {
+    guard page.items.count <= 200, page.rows.count <= 200, data.count <= maxBytes else {
       throw MediaStorageError.pageTooLarge
     }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
