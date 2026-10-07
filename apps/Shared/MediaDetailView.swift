@@ -49,7 +49,7 @@ struct MediaDetailView: View {
             }.disabled(changing)
           }
           #if DEBUG
-          if let synthetic = model.synthetic { Button("Revoke preview access") { synthetic.revokeNextWrite = true }.accessibilityIdentifier("fixture.revoke") }
+          if let synthetic = model.synthetic { Button("Revoke preview access") { synthetic.nextWriteError = .revoked }.accessibilityIdentifier("fixture.revoke"); Button("Change preview profile") { synthetic.nextWriteError = .profileChanged }.accessibilityIdentifier("fixture.profile-change") }
           if model.synthetic != nil && openedExternal { Button("Return to Media Center") { showReview = true; openedExternal = false }.accessibilityIdentifier("synthetic.return") }
           #endif
         }

@@ -28,7 +28,7 @@ struct MediaCenterRoot: View {
         }.padding(32).frame(maxWidth: 480)
       }
     }.onChange(of: model.workspace.error) { _, error in
-      if error == .revoked { Task { await model.disconnect(); model.error = "This device’s access was revoked. Reconnect to continue." } }
+      if error == .revoked || error == .profileChanged { Task { await model.disconnect(); model.error = error == .revoked ? "This device’s access was revoked. Reconnect to continue." : "Your media configuration changed. Reconnect to validate access." } }
     }.task { await model.start() }
       .task(id: model.enrollment?.state) { if model.enrollment?.state == .waiting { await model.poll() } }
   }

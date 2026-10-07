@@ -1,7 +1,7 @@
 import Foundation
 
 public enum HubError: Error, Equatable {
-  case revoked, forbidden, conflict, invalidReply, invalidRequest, unavailable, uncertain
+  case revoked, profileChanged, forbidden, conflict, invalidReply, invalidRequest, unavailable, uncertain
   case rejected(Int)
 }
 public typealias RowQuery = CoreRowsQueryRequest
@@ -106,7 +106,11 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
     case 200...299: break
     case 401: throw HubError.revoked
     case 403: throw HubError.forbidden
-    case 409: throw HubError.conflict
+    case 409:
+      if case .object(let data) = response.data, data["error"] == .string("profile_changed") {
+        throw HubError.profileChanged
+      }
+      throw HubError.conflict
     case 400...499: throw HubError.rejected(response.status)
     default: throw mutation ? HubError.uncertain : HubError.unavailable
     }

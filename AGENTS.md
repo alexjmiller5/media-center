@@ -49,7 +49,7 @@ stable request IDs and offers read-only receipt/current-value checks; it never
 replays them automatically. Full TV-show details are read independently from
 episode cards. Source feed starts use explicit conditional catalog edits and
 never change item consumption state. Catalog date-only values are Gregorian;
-calendar comparisons retain the device time zone. A revoked response on any
+calendar comparisons retain the device time zone. A revoked credential or changed enrollment profile on any
 read, edit or capture path clears visible content and cached pages while
 preserving unsent drafts for later validated recovery.
 There is no analytics SDK or mobile notification permission.

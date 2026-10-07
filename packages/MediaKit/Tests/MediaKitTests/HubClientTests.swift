@@ -54,6 +54,12 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
       await #expect(throws: error) { try await client.query(query) }
     }
   }
+  @Test func changedProfileIsDistinctFromARecordConflict() async throws {
+    let client = try client()
+    StubProtocol.install { _ in (409, Data(#"{"error":"profile_changed"}"#.utf8)) }
+    await #expect(throws: HubError.profileChanged) { try await client.query(query) }
+    await #expect(throws: HubError.profileChanged) { try await client.patch(edit) }
+  }
   @Test func queryUsesNarrowEndpointAndRejectsUnexpectedProjections() async throws {
     let client = try client()
     StubProtocol.install { request in

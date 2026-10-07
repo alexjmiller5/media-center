@@ -187,8 +187,8 @@ import Testing
     #expect(next.connection == nil)
     #expect(next.error == .revoked)
   }
-  @Test(arguments: ["patch", "capture", "receipt", "readback"])
-  func everyRevokedResponseLocksConnectionAndKeepsDraft(operation: String) async throws {
+  @Test(arguments: ["patch", "capture", "receipt", "readback"], [HubError.revoked, .profileChanged])
+  func everyRevokedResponseLocksConnectionAndKeepsDraft(operation: String, reason: HubError) async throws {
     let root = try root()
     defer { try? FileManager.default.removeItem(at: root) }
     let cache = MediaCache(directory: root.appendingPathComponent("cache"))
@@ -202,15 +202,15 @@ import Testing
     let draft = operation == "capture" || operation == "receipt" ? MediaDraft(input: "Save this", intent: .save) : edit
     try await workspace.keep(draft)
     switch operation {
-    case "patch": service.patchError = .revoked; await workspace.submit(draft)
-    case "capture": service.captureError = .revoked; await workspace.submit(draft)
-    case "receipt": service.receiptError = .revoked; await workspace.reconcile(draft)
-    default: service.queryError = .revoked; await workspace.reconcile(draft)
+    case "patch": service.patchError = reason; await workspace.submit(draft)
+    case "capture": service.captureError = reason; await workspace.submit(draft)
+    case "receipt": service.receiptError = reason; await workspace.reconcile(draft)
+    default: service.queryError = reason; await workspace.reconcile(draft)
     }
     #expect(workspace.connection == nil)
     #expect(!workspace.isOnline)
     #expect(workspace.rows.isEmpty && workspace.drafts.isEmpty)
-    #expect(workspace.error == .revoked)
+    #expect(workspace.error == reason)
     #expect(await cache.page(key: "prior", connection: owner) == nil)
     #expect(try await store.load(connection: owner) == [draft])
   }

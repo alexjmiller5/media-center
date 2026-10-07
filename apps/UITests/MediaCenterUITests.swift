@@ -138,6 +138,13 @@ import XCTest
     press("source.done")
     XCTAssertEqual(writes, "Writes: 0")
   }
+  func testChangedProfileRequiresReconnection() {
+    press("item.youtubeVideo.video-one")
+    press("fixture.profile-change")
+    press("media.save")
+    XCTAssertTrue(ui.textFields["enroll.endpoint"].waitForExistence(timeout: 10))
+    XCTAssertFalse(ui.buttons["media.save"].exists)
+  }
   func testRevokedWriteHidesMediaAndRequiresReconnection() {
     press("item.youtubeVideo.video-one")
     press("fixture.revoke")

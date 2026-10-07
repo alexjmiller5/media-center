@@ -6,7 +6,7 @@ import Observation
 @Observable @MainActor public final class SyntheticMediaService: MediaService {
   public let connection: MediaConnection
   public let now: Date
-  public var revokeNextWrite = false
+  public var nextWriteError: HubError?
   public private(set) var writeCount = 0
   public private(set) var tables: [String: [CoreRow]] = [:]
   private var captures: [String: CaptureReceipt] = [:]
@@ -100,7 +100,7 @@ import Observation
     return .init(rows: page.map { row in Dictionary(uniqueKeysWithValues: query.columns.map { ($0, row[$0] ?? .null) }) }, nextCursor: offset + page.count < rows.count ? String(offset + page.count) : nil)
   }
   public func patch(_ edit: ConditionalEdit) async throws -> PatchReceipt {
-    if revokeNextWrite { throw HubError.revoked }
+    if let nextWriteError { throw nextWriteError }
     writeCount += 1
     guard edit.id != "episode-two" else { throw HubError.rejected(422) }
     guard let index = tables[edit.table]?.firstIndex(where: { $0["id"] == .string(edit.id) }), let old = tables[edit.table]?[index],
@@ -113,7 +113,7 @@ import Observation
     return .init(id: edit.id, revision: revision)
   }
   public func submitCapture(_ request: CaptureRequest) async throws -> CaptureReceipt {
-    if revokeNextWrite { throw HubError.revoked }
+    if let nextWriteError { throw nextWriteError }
     if let receipt = captures[request.requestId] { return receipt }
     writeCount += 1
     let id = "captured-" + request.requestId

@@ -212,12 +212,12 @@ public enum EditState: Equatable, Sendable {
   }
   private func handle(_ reason: HubError, generation current: UInt64) async -> Bool {
     guard current == generation else { return true }
-    guard reason == .revoked else { error = reason; return false }
+    guard reason == .revoked || reason == .profileChanged else { error = reason; return false }
     let owner = connection
     disconnect()
     let lockedGeneration = generation
     if let owner { await cache?.removePages(connection: owner) }
-    if lockedGeneration == generation { error = .revoked }
+    if lockedGeneration == generation { error = reason }
     return true
   }
 }
