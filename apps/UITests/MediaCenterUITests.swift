@@ -31,7 +31,12 @@ import XCTest
     #if os(macOS)
     if identifier.hasPrefix("item.") { button.doubleClick() } else { button.tap() }
     #else
-    button.tap()
+    if identifier.hasPrefix("filter.") {
+      let previous = button.value as? String
+      button.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+      XCTAssertTrue(button.waitForExistence(timeout: 10))
+      XCTAssertNotEqual(button.value as? String, previous, "Filter switch must change before checking results")
+    } else { button.tap() }
     #endif
   }
   private func media(_ id: String) -> XCUIElement {
