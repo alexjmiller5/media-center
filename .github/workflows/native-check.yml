@@ -2,9 +2,9 @@ name: Native checks
 
 on:
   push:
-    paths: ["packages/MediaKit/**", ".github/workflows/native-check.yml"]
+    paths: ["packages/MediaKit/**", "scripts/build-enrollment-policy.ts", ".github/workflows/native-check.yml"]
   pull_request:
-    paths: ["packages/MediaKit/**", ".github/workflows/native-check.yml"]
+    paths: ["packages/MediaKit/**", "scripts/build-enrollment-policy.ts", ".github/workflows/native-check.yml"]
 
 permissions:
   contents: read
@@ -15,3 +15,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: swift test --package-path packages/MediaKit --jobs 2
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: alexjmiller5/life-data
+          ref: ed7d7057b3dd11d009599db0ad1b340adf66e070
+          path: .policy-source
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - run: bun scripts/build-enrollment-policy.ts .policy-source --check

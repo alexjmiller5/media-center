@@ -4,8 +4,9 @@ media-center: a daily poller that ingests TV episodes (TMDB), YouTube
 uploads (YouTube Data API) and articles (RSS, link scraping, public Bluesky
 and Chrome consumer feature updates) into Alex's life-data hub.
 The Python service runs on Modal as a single cron job.
-`packages/MediaKit` contains the native client domain models and feed rules;
-platform app shells and transport are not implemented yet.
+`packages/MediaKit` contains native client models, feed rules, scoped HTTP
+transport, canonical enrollment policy, bounded content cache and draft state.
+Platform app shells and device enrollment orchestration are not implemented yet.
 
 ## Architecture rule (the one that matters)
 
@@ -212,3 +213,12 @@ Run `swift test --package-path packages/MediaKit --jobs 2` with a private
 `--scratch-path` outside cloud-synced folders. Tests contain only synthetic data.
 Cross-service capture checks and their explicit dependency paths are documented
 in `tests/contracts/README.md`; they run entirely against temporary synthetic state.
+
+Native policy and codecs are generated from a pinned Life Data revision with
+`bun scripts/build-enrollment-policy.ts <life-data-checkout>`. Add `--check` to
+verify reproducibility; do not edit files under `Generated/` or the policy JS.
+The JSC adapter calls canonical policy without importing replica or SQL code.
+Content cache is bounded to 50 pages/50 MiB, partitioned by endpoint, profile
+revision and credential fingerprint. Drafts live separately and are never
+automatically submitted or erased on disconnect. Write receipts and readback
+control success; uncertain or conflicting patches cannot be silently replayed.
