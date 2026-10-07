@@ -90,6 +90,10 @@ import XCTest
     press("capture.done")
     press("item.youtubeVideo.video-one")
     XCTAssertTrue(ui.buttons["media.save"].waitForExistence(timeout: 10))
+    if ProcessInfo.processInfo.environment["MEDIA_TEST_AX5"] == "1" {
+      let title = ui.staticTexts["How a coastline changes"].firstMatch
+      XCTAssertGreaterThan(title.frame.width, ui.frame.width * 0.75, "Large titles need the sheet width")
+    }
     snapshot("detail")
   }
   private func snapshot(_ name: String) {
@@ -134,7 +138,9 @@ import XCTest
   }
   func testTVShowExpandsIntoEpisodes() {
     reveal(media("item.tvShow.show-one"))
-    XCTAssertTrue(media("item.tvShow.show-one").label.lowercased().contains("tv show"))
+    let row = media("item.tvShow.show-one")
+    let description = row.label.isEmpty ? (row.value as? String) ?? "" : row.label
+    XCTAssertTrue(description.lowercased().contains("tv show"))
     press("item.tvShow.show-one")
     XCTAssertTrue(ui.staticTexts["First light"].waitForExistence(timeout: 10))
     XCTAssertTrue(ui.staticTexts["Second tide"].exists)

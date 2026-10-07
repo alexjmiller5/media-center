@@ -8,6 +8,7 @@ struct MediaDetailView: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.dynamicTypeSize) private var textSize
   @State private var showReview = false
   @State private var showFields = false
   @State private var openedExternal = false
@@ -17,11 +18,15 @@ struct MediaDetailView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
-        HStack { Text(title).font(.largeTitle.bold()); Spacer(); Button("Done") { dismiss() } }
+        adaptiveRow {
+          Text(title).font(.largeTitle.bold())
+          if !textSize.isAccessibilitySize { Spacer() }
+          Button("Done") { dismiss() }
+        }
         if let item = library.records[identity]?.item {
           Text(item.status).foregroundStyle(.secondary)
           if let duration = item.durationMinutes { Text("\(Int(duration.rounded())) minutes").foregroundStyle(.secondary) }
-          HStack {
+          adaptiveRow {
             if let url = item.url {
               Button("Open original") {
                 library.opened(identity); openedExternal = true
@@ -56,9 +61,9 @@ struct MediaDetailView: View {
           Text("Episodes").font(.title2.bold())
           ForEach(Array(Set(library.episodes.compactMap(\.season))).sorted(), id: \.self) { season in
             VStack(alignment: .leading, spacing: 12) {
-              HStack {
+              adaptiveRow {
                 Text(season == 0 ? "Specials" : "Season \(season)").font(.headline)
-                Spacer()
+                if !textSize.isAccessibilitySize { Spacer() }
                 if season > 0 {
                   Button("Mark aired episodes finished") { seasonSelection = .init(season: season, episodes: library.airedEpisodes(season: season)) }
                     .accessibilityIdentifier("season.\(season).finish")
@@ -66,9 +71,9 @@ struct MediaDetailView: View {
                 }
               }
               ForEach(library.episodes.filter { $0.season == season }, id: \.identity) { episode in
-                HStack {
+                adaptiveRow {
                   VStack(alignment: .leading, spacing: 4) { Text(episode.title); Text(episode.status).font(.caption).foregroundStyle(.secondary) }
-                  Spacer()
+                  if !textSize.isAccessibilitySize { Spacer() }
                   if library.canEdit(episode.identity, role: "status"), let binding = library.connection.bindings.items[MediaKind.tvEpisode.rawValue] {
                     Menu("Status") { ForEach(binding.statuses.keys.sorted(), id: \.self) { status in Button(status) { Task { await library.setConsumption(episode.identity, status: status, date: consumptionDate) } } } }
                   }
@@ -93,6 +98,9 @@ struct MediaDetailView: View {
       .sheet(isPresented: $showFields) { MediaUserFieldsView(library: library, identity: identity) }
       .sheet(isPresented: $showReview) { review }
       .sheet(item: $seasonSelection) { selection in seasonPreview(selection.episodes) }
+  }
+  private var adaptiveRow: AnyLayout {
+    textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout())
   }
   private var title: String { library.records[identity]?.item.title ?? library.sources.first { $0.identity.kind == .tvShow && $0.identity.id == identity.id }?.title ?? "Media details" }
   private var review: some View {
