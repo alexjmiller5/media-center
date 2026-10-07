@@ -79,6 +79,7 @@ def test_concurrent_capture_after_read_never_overwrites_item_or_tombstone(
         "status": "Finished",
         "note": "Keep",
         "title": "Saved title",
+        "saved": True,
         "updated_at": "2026-09-01T00:00:00.000Z",
         "deleted_at": "2026-09-01T00:00:00.000Z" if deleted else None,
     }

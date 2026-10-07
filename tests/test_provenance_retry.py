@@ -158,7 +158,7 @@ def test_missing_provenance_retries_from_stored_items_after_failure(
         assert len(state[item_table]) == 1
         # The source disappears; a retry must use stored relationships, not upstream.
         state[source_table] = []
-        state[item_table][0].update(status="Finished", note="Keep edited note")
+        state[item_table][0].update(status="Finished", note="Keep edited note", saved=True)
         saved = copy.deepcopy(state[item_table])
         existing_edges = copy.deepcopy(state.get("provenance", []))
         failing = False

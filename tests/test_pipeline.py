@@ -129,10 +129,18 @@ def test_sync_tv_ingests_missing_episodes_with_provenance():
 def test_sync_tv_retries_partial_ended_backfill_without_resetting_status():
     season = fx("tmdb_season.json")
     ids = [str(e["id"]) for e in season["episodes"]]
-    watched = {"id": ids[0], "show_id": "1", "status": "Finished", "note": "Keep"}
+    watched = {"id": ids[0], "show_id": "1", "status": "Finished", "note": "Keep", "saved": True}
     hub = FakeHub(
         {
-            "tv_shows": [{"id": "1", "tmdb_status": "Ended", "follow": 0, "status": "Gave Up"}],
+            "tv_shows": [
+                {
+                    "id": "1",
+                    "tmdb_status": "Ended",
+                    "follow": 0,
+                    "status": "Gave Up",
+                    "feed_since": "2026-01-01T12:00:00.000Z",
+                }
+            ],
             "tv_episodes": [watched.copy()],
         },
         reject=lambda table, row: (
@@ -155,6 +163,7 @@ def test_sync_tv_retries_partial_ended_backfill_without_resetting_status():
     refreshed = next(r for r in hub.tables["tv_episodes"] if r["id"] == ids[0])
     assert {key: refreshed[key] for key in watched} == watched
     assert refreshed["air_date"] == season["episodes"][0]["air_date"]
+    assert hub.tables["tv_shows"][0]["feed_since"] == "2026-01-01T12:00:00.000Z"
     assert [r["id"] for r in hub.pushed["tv_episodes"]].count(ids[1]) == 1
 
 
@@ -260,13 +269,14 @@ def test_sync_youtube_paged_runs_recover_gaps_and_preserve_user_fields(backfille
                 return {"id": row["id"]}
         return None
 
-    watched = {"id": video_ids[0], "status": "Finished", "note": "Keep"}
+    watched = {"id": video_ids[0], "status": "Finished", "note": "Keep", "saved": True}
     channel = {
         "id": "UCtest",
         "uploads_playlist_id": "UUtest",
         "backfilled": backfilled,
         "follow": 0,
         "title": "Keep channel",
+        "feed_since": "2026-01-01T12:00:00.000Z",
     }
     hub = FakeHub(
         {
@@ -411,7 +421,12 @@ def test_sync_youtube_all_rejected_stays_unfilled_and_no_provenance():
 
 
 def test_sync_feeds_catalogs_unfollowed_sources_and_preserves_read_status():
-    read = {"id": "https://blog.example.com/third", "status": "Finished", "note": "Keep"}
+    read = {
+        "id": "https://blog.example.com/third",
+        "status": "Finished",
+        "note": "Keep",
+        "saved": True,
+    }
     hub = FakeHub(
         {
             "feeds": [
@@ -433,6 +448,8 @@ def test_sync_feeds_catalogs_unfollowed_sources_and_preserves_read_status():
             ("off.example.com", '<a href="/post/1">New post</a>'),
         ]
     )
+    for source in hub.tables["feeds"]:
+        source["feed_since"] = "2026-01-01T12:00:00.000Z"
     assert pipeline.sync_feeds(hub, http) == {"feeds": 2, "articles": 3, "failed": 0, "rejected": 0}
     assert pipeline.sync_feeds(hub, http)["articles"] == 0
     assert {r["id"] for r in hub.pushed["articles"]} == {
@@ -441,6 +458,7 @@ def test_sync_feeds_catalogs_unfollowed_sources_and_preserves_read_status():
         "https://off.example.com/post/1",
     }
     assert next(r for r in hub.tables["articles"] if r["id"] == read["id"]) == read
+    assert all(source["feed_since"] == "2026-01-01T12:00:00.000Z" for source in hub.tables["feeds"])
     assert len(hub.tables["provenance"]) == 3
 
 
