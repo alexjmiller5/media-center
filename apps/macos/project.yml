@@ -1,0 +1,53 @@
+name: MediaCenter
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ALWAYS_SEARCH_USER_PATHS: NO
+  configs:
+    debug:
+      ONLY_ACTIVE_ARCH: YES
+      ENABLE_TESTABILITY: YES
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+packages:
+  MediaKit:
+    path: ../../packages/MediaKit
+targets:
+  MediaCenter:
+    type: application
+    platform: macOS
+    sources: [App, ../Shared]
+    dependencies:
+      - package: MediaKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.media-center
+        PRODUCT_NAME: MediaCenter
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Media Center
+        ENABLE_HARDENED_RUNTIME: YES
+  MediaCenterUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [../UITests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.alexmiller.media-center.uitests
+        PRODUCT_NAME: MediaCenterUITests
+        TEST_TARGET_NAME: MediaCenter
+    dependencies:
+      - target: MediaCenter
+schemes:
+  MediaCenter:
+    build:
+      targets:
+        MediaCenter: all
+        MediaCenterUITests: [test]
+    test:
+      targets: [MediaCenterUITests]

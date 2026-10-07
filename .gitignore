@@ -13,3 +13,6 @@ __pycache__/
 
 .build/
 .swiftpm/
+*.xcodeproj/
+apps/*/App/Info.plist
+apps/*/build/

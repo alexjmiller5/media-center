@@ -2,9 +2,9 @@ name: Native checks
 
 on:
   push:
-    paths: ["packages/MediaKit/**", "scripts/build-enrollment-policy.ts", ".github/workflows/native-check.yml"]
+    paths: ["apps/**", "packages/MediaKit/**", "scripts/build-enrollment-policy.ts", ".github/workflows/native-check.yml"]
   pull_request:
-    paths: ["packages/MediaKit/**", "scripts/build-enrollment-policy.ts", ".github/workflows/native-check.yml"]
+    paths: ["apps/**", "packages/MediaKit/**", "scripts/build-enrollment-policy.ts", ".github/workflows/native-check.yml"]
 
 permissions:
   contents: read
@@ -28,3 +28,24 @@ jobs:
         with:
           bun-version: "1.4.2"
       - run: bun scripts/build-enrollment-policy.ts .policy-source --check
+  apps:
+    runs-on: macos-26-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install project generator on disposable CI host
+        run: brew install xcodegen
+      - name: Generate native projects
+        run: |
+          xcodegen generate --spec apps/macos/project.yml
+          xcodegen generate --spec apps/ios/project.yml
+      - name: Build iPhone app for simulator
+        run: xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/ios-build" -jobs 2 CODE_SIGNING_ALLOWED=NO build
+      - name: Exercise Mac synthetic interactions
+        run: xcodebuild -project apps/macos/MediaCenter.xcodeproj -scheme MediaCenter -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/mac-build" -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: synthetic-native-test-results
+          path: ${{ runner.temp }}/mac-build/Logs/Test/*.xcresult
+          retention-days: 3
