@@ -169,4 +169,26 @@ import Testing
     #expect(!library.cards.contains { $0.identity == .init(kind: .youtubeVideo, id: "video-one") })
   }
 
+  @Test func libraryUsesTheSameSourceSearchAndFiltersAsFeed() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try SyntheticMediaService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.connection, workspace: workspace, now: service.now)
+    library.section = .library
+    await library.refresh()
+    library.preferences.search = "  low tide studio  "
+    #expect(library.matchingItems.map(\.identity) == [.init(kind: .youtubeVideo, id: "video-one")])
+    library.preferences.search = ""
+    library.preferences.statuses = ["Finished"]
+    #expect(!library.matchingItems.isEmpty)
+    #expect(library.matchingItems.allSatisfy { $0.status == "Finished" })
+    library.preferences.sources = [.init(kind: .youtubeChannel, id: "channel-one")]
+    #expect(library.matchingItems.isEmpty)
+    library.preferences.statuses = []
+    #expect(library.matchingItems.map(\.identity) == [.init(kind: .youtubeVideo, id: "video-one")])
+    #expect(service.writeCount == 0)
+  }
+
 }

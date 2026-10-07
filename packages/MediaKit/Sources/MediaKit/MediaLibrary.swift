@@ -49,9 +49,10 @@ public struct BulkEditResult: Identifiable, Sendable {
     FeedPolicy.cards(items: visible + nextEpisodes, sources: sources, preferences: preferences, now: now, calendar: calendar)
   }
   public var matchingItems: [MediaItem] {
-    visible.filter { item in
-      (preferences.kinds.isEmpty || preferences.kinds.contains(item.identity.kind)) &&
-      (preferences.search.isEmpty || item.title.localizedCaseInsensitiveContains(preferences.search))
+    let sourceMap = Dictionary(uniqueKeysWithValues: sources.map { ($0.identity, $0) })
+    return visible.filter { item in
+      let source = item.source ?? (item.identity.kind == .tvShow ? SourceIdentity(kind: .tvShow, id: item.identity.id) : nil)
+      return FeedPolicy.matches(item, source: source.flatMap { sourceMap[$0] }, preferences: preferences)
     }
   }
   public func opened(_ id: MediaIdentity) { review = id }

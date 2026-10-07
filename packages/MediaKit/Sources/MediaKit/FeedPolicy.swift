@@ -101,7 +101,7 @@ public enum FeedPolicy {
     return cards.values.sorted { precedes($0, $1, sort: preferences.sort, calendar: calendar) }
   }
 
-  private static func matches(_ item: MediaItem, source: MediaSource?, preferences: FeedPreferences)
+  static func matches(_ item: MediaItem, source: MediaSource?, preferences: FeedPreferences)
     -> Bool
   {
     let kind = item.identity.kind == .tvEpisode ? MediaKind.tvShow : item.identity.kind

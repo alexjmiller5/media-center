@@ -64,6 +64,16 @@ import XCTest
     XCTAssertTrue(ui.buttons["item.article.article-one"].waitForExistence(timeout: 10))
     XCTAssertFalse(ui.buttons["item.tvShow.show-one"].exists)
   }
+  func testLibrarySearchIncludesSourceTitlesWithoutWriting() {
+    press("nav.library")
+    XCTAssertTrue(ui.buttons["item.youtubeVideo.video-one"].waitForExistence(timeout: 10))
+    let search = ui.searchFields.firstMatch
+    XCTAssertTrue(search.waitForExistence(timeout: 10))
+    search.tap(); search.typeText("Low Tide Studio")
+    XCTAssertTrue(ui.buttons["item.youtubeVideo.video-one"].waitForExistence(timeout: 10))
+    XCTAssertFalse(ui.buttons["item.article.article-one"].exists)
+    XCTAssertEqual(writes, "Writes: 0")
+  }
   func testTVShowExpandsIntoEpisodes() {
     press("item.tvShow.show-one")
     XCTAssertTrue(ui.staticTexts["First light"].waitForExistence(timeout: 10))
