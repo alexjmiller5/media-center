@@ -26,7 +26,7 @@ public enum EditState: Equatable, Sendable {
   public private(set) var currentValues: [UUID: CoreRow] = [:]
   public private(set) var cachedPages = Set<String>()
   public private(set) var error: HubError?
-  public var isOnline = true
+  public var isOnline = false
   @ObservationIgnored private let store: DraftStore
   @ObservationIgnored private let cache: MediaCache?
   @ObservationIgnored private var service: (any MediaService)?
@@ -57,6 +57,7 @@ public enum EditState: Equatable, Sendable {
     service?.close()
     service = nil
     connection = nil
+    isOnline = false
     rows = [:]
     drafts = []
     captureReceipts = [:]
@@ -94,11 +95,8 @@ public enum EditState: Equatable, Sendable {
     } catch {
       guard current == generation else { return }
       let reason = error as? HubError ?? .unavailable
-      if reason == .revoked {
-        disconnect()
-        await cache?.removePages(connection: connection)
-        self.error = reason
-      } else if reason == .unavailable {
+      if await handle(reason, generation: current) { return }
+      if reason == .unavailable {
         isOnline = false
         self.error = reason
         await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current)
@@ -166,7 +164,8 @@ public enum EditState: Equatable, Sendable {
         captureReceipts[draft.id] = receipt
       } catch {
         guard current == generation else { return }
-        self.error = error as? HubError ?? .uncertain
+        let reason = error as? HubError ?? .uncertain
+        if await handle(reason, generation: current) { return }
         captureReceipts[draft.id] = .init(
           requestId: draft.id.uuidString.lowercased(), state: "uncertain")
       }
@@ -181,7 +180,7 @@ public enum EditState: Equatable, Sendable {
       } catch {
         guard current == generation else { return }
         let reason = error as? HubError ?? .uncertain
-        self.error = reason
+        if await handle(reason, generation: current) { return }
         editStates[draft.id] =
           reason == .conflict ? .conflict : reason == .uncertain ? .uncertain : .rejected
       }
@@ -209,6 +208,16 @@ public enum EditState: Equatable, Sendable {
         guard current == generation else { return }
         currentValues[draft.id] = page.rows.first
       }
-    } catch { if current == generation { self.error = error as? HubError ?? .unavailable } }
+    } catch { _ = await handle(error as? HubError ?? .unavailable, generation: current) }
+  }
+  private func handle(_ reason: HubError, generation current: UInt64) async -> Bool {
+    guard current == generation else { return true }
+    guard reason == .revoked else { error = reason; return false }
+    let owner = connection
+    disconnect()
+    let lockedGeneration = generation
+    if let owner { await cache?.removePages(connection: owner) }
+    if lockedGeneration == generation { error = .revoked }
+    return true
   }
 }

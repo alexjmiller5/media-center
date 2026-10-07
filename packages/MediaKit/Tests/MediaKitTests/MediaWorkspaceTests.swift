@@ -10,6 +10,8 @@ import Testing
   var captureCount = 0
   var patchError: HubError?
   var queryError: HubError?
+  var captureError: HubError?
+  var receiptError: HubError?
   var delayPatch = false
   var patchContinuation: CheckedContinuation<PatchReceipt, any Error>?
   func query(_ request: RowQuery) async throws -> RowPage {
@@ -24,10 +26,12 @@ import Testing
   }
   func submitCapture(_ request: CaptureRequest) async throws -> CaptureReceipt {
     captureCount += 1
+    if let captureError { throw captureError }
     return try await withCheckedThrowingContinuation { captureContinuation = $0 }
   }
   func captureReceipt(id: String) async throws -> CaptureReceipt {
-    .init(requestId: id, state: "uncertain")
+    if let receiptError { throw receiptError }
+    return .init(requestId: id, state: "uncertain")
   }
   func close() {}
 }
@@ -183,4 +187,32 @@ import Testing
     #expect(next.connection == nil)
     #expect(next.error == .revoked)
   }
+  @Test(arguments: ["patch", "capture", "receipt", "readback"])
+  func everyRevokedResponseLocksConnectionAndKeepsDraft(operation: String) async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let cache = MediaCache(directory: root.appendingPathComponent("cache"))
+    let store = DraftStore(directory: root.appendingPathComponent("drafts"))
+    let owner = try fixture()
+    try await cache.store(.init(items: [], nextCursor: nil, rows: [["id": .string("private-row")]]), key: "prior", connection: owner)
+    let service = DelayedService()
+    let workspace = MediaWorkspace(drafts: store, cache: cache)
+    try await workspace.connect(identity: owner, service: service)
+    let edit = MediaDraft(edit: .init(table: "items", id: "one", values: ["saved": .bool(true)], expectedRevision: .init(updatedAt: "2026-01-01T00:00:00.000Z", hubAt: nil)))
+    let draft = operation == "capture" || operation == "receipt" ? MediaDraft(input: "Save this", intent: .save) : edit
+    try await workspace.keep(draft)
+    switch operation {
+    case "patch": service.patchError = .revoked; await workspace.submit(draft)
+    case "capture": service.captureError = .revoked; await workspace.submit(draft)
+    case "receipt": service.receiptError = .revoked; await workspace.reconcile(draft)
+    default: service.queryError = .revoked; await workspace.reconcile(draft)
+    }
+    #expect(workspace.connection == nil)
+    #expect(!workspace.isOnline)
+    #expect(workspace.rows.isEmpty && workspace.drafts.isEmpty)
+    #expect(workspace.error == .revoked)
+    #expect(await cache.page(key: "prior", connection: owner) == nil)
+    #expect(try await store.load(connection: owner) == [draft])
+  }
+
 }

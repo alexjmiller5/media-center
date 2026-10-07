@@ -11,48 +11,74 @@ import XCTest
     }
   }
   override func tearDown() async throws { await MainActor.run { app.terminate() } }
+  private var ui: XCUIElement {
+    #if os(macOS)
+    app.windows.firstMatch
+    #else
+    app
+    #endif
+  }
   private func press(_ identifier: String) {
     let button: XCUIElement
     #if os(macOS)
-    button = identifier.hasPrefix("filter.") ? app.checkBoxes[identifier] : app.buttons[identifier]
+    button = identifier.hasPrefix("filter.") ? ui.checkBoxes[identifier] : ui.buttons[identifier]
     #else
-    button = identifier.hasPrefix("filter.") ? app.switches[identifier] : identifier.hasPrefix("nav.") ? app.tabBars.buttons[String(identifier.dropFirst(4)).capitalized] : app.buttons[identifier]
+    button = identifier.hasPrefix("filter.") ? ui.switches[identifier] : identifier.hasPrefix("nav.") ? ui.tabBars.buttons[String(identifier.dropFirst(4)).capitalized] : ui.buttons[identifier]
     #endif
     let exists = button.waitForExistence(timeout: 10)
     XCTAssertTrue(exists, identifier)
     button.tap()
   }
   private var writes: String {
-    let text = app.staticTexts["fixture.writes"].firstMatch
+    let text = ui.staticTexts["fixture.writes"].firstMatch
     return (text.value as? String) ?? text.label
+  }
+  func testSyntheticScreenSnapshots() {
+    XCTAssertTrue(ui.buttons["item.youtubeVideo.video-one"].waitForExistence(timeout: 20))
+    snapshot("feed")
+    press("media.add")
+    let input = ui.textViews["capture.input"]
+    XCTAssertTrue(input.waitForExistence(timeout: 10))
+    snapshot("capture")
+    XCTAssertEqual(input.label, "Link or description to save")
+    press("capture.done")
+    press("item.youtubeVideo.video-one")
+    XCTAssertTrue(ui.buttons["media.save"].waitForExistence(timeout: 10))
+    snapshot("detail")
+  }
+  private func snapshot(_ name: String) {
+    let shot = XCTAttachment(screenshot: ui.screenshot())
+    shot.name = name; shot.lifetime = .keepAlways; add(shot)
+    let tree = XCTAttachment(string: ui.debugDescription)
+    tree.name = name + "-tree"; tree.lifetime = .keepAlways; add(tree)
   }
   func testNativeNavigationAndMixedFeedFilters() {
     press("nav.library")
-    XCTAssertTrue(app.buttons["item.article.article-one"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.buttons["item.article.article-one"].waitForExistence(timeout: 10))
     press("nav.history")
-    XCTAssertTrue(app.buttons["item.article.article-history"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.buttons["item.article.article-history"].waitForExistence(timeout: 10))
     press("nav.feed")
     press("feed.filters")
     press("filter.article")
     press("filters.done")
-    XCTAssertTrue(app.buttons["item.article.article-one"].waitForExistence(timeout: 10))
-    XCTAssertFalse(app.buttons["item.tvShow.show-one"].exists)
+    XCTAssertTrue(ui.buttons["item.article.article-one"].waitForExistence(timeout: 10))
+    XCTAssertFalse(ui.buttons["item.tvShow.show-one"].exists)
   }
   func testTVShowExpandsIntoEpisodes() {
     press("item.tvShow.show-one")
-    XCTAssertTrue(app.staticTexts["First light"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Second tide"].exists)
+    XCTAssertTrue(ui.staticTexts["First light"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.staticTexts["Second tide"].exists)
   }
   func testAddRequiresResolvedSavedReceipt() {
     press("media.add")
-    let input = app.textViews["capture.input"]
+    let input = ui.textViews["capture.input"]
     XCTAssertTrue(input.waitForExistence(timeout: 10))
     input.tap()
     input.typeText("Save https://example.test/new-article")
     press("capture.save")
-    XCTAssertTrue(app.staticTexts["Saved"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.staticTexts["Saved"].waitForExistence(timeout: 10))
     press("capture.done")
-    XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "item.article.captured-")).firstMatch.waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "item.article.captured-")).firstMatch.waitForExistence(timeout: 10))
   }
   func testOpenReturnAndDismissNeverMarksConsumed() {
     press("item.youtubeVideo.video-one")
@@ -60,54 +86,71 @@ import XCTest
     press("synthetic.return")
     press("review.unchanged")
     XCTAssertEqual(writes, "Writes: 0")
-    XCTAssertTrue(app.staticTexts["Unseen"].exists)
+    XCTAssertTrue(ui.staticTexts["Unseen"].exists)
   }
   func testReadOnlySourceFactsHaveNoEditors() {
     press("item.youtubeVideo.video-one")
-    XCTAssertFalse(app.textFields["edit.title"].exists)
-    XCTAssertFalse(app.textFields["edit.duration"].exists)
-    XCTAssertTrue(app.buttons["media.save"].exists)
+    XCTAssertFalse(ui.textFields["edit.title"].exists)
+    XCTAssertFalse(ui.textFields["edit.duration"].exists)
+    XCTAssertTrue(ui.buttons["media.save"].exists)
   }
   func testUserNotesAreExplicitlyApplied() {
     press("item.youtubeVideo.video-one")
     press("media.fields")
-    let notes = app.textViews["edit.note"]
+    let notes = ui.textViews["edit.note"]
     XCTAssertTrue(notes.waitForExistence(timeout: 10))
     notes.tap(); notes.typeText("Keep this for the weekend")
     XCTAssertEqual(writes, "Writes: 0")
     press("fields.apply")
-    XCTAssertTrue(app.staticTexts["Updated"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.staticTexts["Updated"].waitForExistence(timeout: 10))
     XCTAssertEqual(writes, "Writes: 1")
   }
   func testUnsentCaptureCanBeRecoveredWithoutAutomaticSubmission() {
     press("media.add")
-    let input = app.textViews["capture.input"]
+    let input = ui.textViews["capture.input"]
     XCTAssertTrue(input.waitForExistence(timeout: 10))
     input.tap(); input.typeText("Save https://example.test/later")
     press("capture.done")
     press("media.drafts")
-    let draft = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "draft.capture.")).firstMatch
+    let draft = ui.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "draft.capture.")).firstMatch
     XCTAssertTrue(draft.waitForExistence(timeout: 10)); draft.tap()
-    XCTAssertEqual(app.textViews["capture.input"].value as? String, "Save https://example.test/later")
+    XCTAssertEqual(ui.textViews["capture.input"].value as? String, "Save https://example.test/later")
     XCTAssertEqual(writes, "Writes: 0")
     press("capture.save")
-    XCTAssertTrue(app.staticTexts["Saved"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.staticTexts["Saved"].waitForExistence(timeout: 10))
     XCTAssertEqual(writes, "Writes: 1")
   }
   func testSourceFeedStartIsAvailableWithoutWritingOnOpen() {
     press("nav.sources")
     press("source.youtubeChannel.channel-one")
-    XCTAssertTrue(app.descendants(matching: .any)["source.feed-start"].firstMatch.waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.descendants(matching: .any)["source.feed-start"].firstMatch.waitForExistence(timeout: 10))
     XCTAssertEqual(writes, "Writes: 0")
     press("source.done")
+    XCTAssertEqual(writes, "Writes: 0")
+  }
+  func testRevokedWriteHidesMediaAndRequiresReconnection() {
+    press("item.youtubeVideo.video-one")
+    press("fixture.revoke")
+    press("media.save")
+    XCTAssertTrue(ui.textFields["enroll.endpoint"].waitForExistence(timeout: 10))
+    XCTAssertFalse(ui.buttons["media.save"].exists)
+  }
+  func testNonGregorianCalendarNeverIncludesFutureEpisodesInBulk() {
+    app.terminate()
+    app.launchArguments.append("--buddhist-calendar")
+    app.launch()
+    press("nav.library")
+    press("item.tvShow.show-one")
+    press("season.1.finish")
+    XCTAssertTrue(ui.staticTexts["2 aired episodes"].waitForExistence(timeout: 10))
     XCTAssertEqual(writes, "Writes: 0")
   }
   func testSeasonBulkShowsPartialReceipts() {
     press("item.tvShow.show-one")
     press("season.1.finish")
-    XCTAssertTrue(app.staticTexts["2 aired episodes"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.staticTexts["2 aired episodes"].waitForExistence(timeout: 10))
     press("season.confirm")
-    XCTAssertTrue(app.staticTexts["1 of 2 updated"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Could not update Second tide"].exists)
+    XCTAssertTrue(ui.staticTexts["1 of 2 updated"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.staticTexts["Could not update Second tide"].exists)
   }
 }

@@ -6,7 +6,7 @@ struct MediaCenterRoot: View {
   @Environment(\.openURL) private var openURL
   var body: some View {
     Group {
-      if let library = model.library { MediaLibraryView(model: model, library: library) }
+      if let library = model.library, model.workspace.connection == library.connection.identity { MediaLibraryView(model: model, library: library) }
       else {
         VStack(alignment: .leading, spacing: 20) {
           Text("Media Center").font(.largeTitle.bold())
@@ -19,7 +19,7 @@ struct MediaCenterRoot: View {
             Button("Open approval") { openURL(approval.url) }
             Button("Cancel") { Task { await model.disconnect() } }
           } else {
-            Button("Connect") { if let url = model.begin() { openURL(url) } }.buttonStyle(.borderedProminent)
+            Button("Connect") { if let url = model.begin() { openURL(url) } }.buttonStyle(.borderedProminent).disabled(model.starting)
           }
           if let error = model.error { Text(error).foregroundStyle(.red) }
           if model.enrollment?.state == .expired { Text("Approval expired. Connect again to request a new code.") }
@@ -27,6 +27,8 @@ struct MediaCenterRoot: View {
           if model.starting { ProgressView() }
         }.padding(32).frame(maxWidth: 480)
       }
+    }.onChange(of: model.workspace.error) { _, error in
+      if error == .revoked { Task { await model.disconnect(); model.error = "This device’s access was revoked. Reconnect to continue." } }
     }.task { await model.start() }
       .task(id: model.enrollment?.state) { if model.enrollment?.state == .waiting { await model.poll() } }
   }

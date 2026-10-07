@@ -91,3 +91,16 @@ func episode(
   #expect(card?.title == "Series")
   #expect(card?.nextEpisode == nil)
 }
+
+@Test(arguments: [Calendar.Identifier.buddhist, .hebrew, .islamic])
+func catalogDaysRemainGregorianWithTheDeviceTimeZone(identifier: Calendar.Identifier) {
+  var device = Calendar(identifier: identifier)
+  device.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+  var gregorian = utc
+  gregorian.timeZone = device.timeZone
+  let future = MediaRelease.day(year: 2026, month: 10, day: 9)
+  #expect(future.orderingDate(calendar: device) == future.orderingDate(calendar: gregorian))
+  #expect(!future.isReleased(at: now, calendar: device))
+  #expect(FeedQueryPlan.day(now, calendar: device) == FeedQueryPlan.day(now, calendar: gregorian))
+  #expect(TVProgress.nextEpisode(episodes: [episode(1, release: future)], now: now, calendar: device) == nil)
+}

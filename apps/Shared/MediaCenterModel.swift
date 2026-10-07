@@ -40,7 +40,7 @@ import Observation
     if let synthetic {
       do {
         try await workspace.connect(identity: synthetic.connection.identity, service: synthetic)
-        library = MediaLibrary(connection: synthetic.connection, workspace: workspace, now: synthetic.now)
+        library = MediaLibrary(connection: synthetic.connection, workspace: workspace, now: synthetic.now, calendar: ProcessInfo.processInfo.arguments.contains("--buddhist-calendar") ? Calendar(identifier: .buddhist) : .current)
         await library?.refresh()
       } catch { self.error = "Could not open preview data." }
       return
@@ -83,6 +83,8 @@ import Observation
     await library?.refresh()
   }
   func disconnect() async {
+    let wasStarting = starting
+    starting = true; defer { starting = wasStarting }
     let identity = library?.connection.identity
     library = nil; workspace.disconnect()
     await enrollment?.disconnect()

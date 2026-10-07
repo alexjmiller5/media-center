@@ -29,6 +29,10 @@ jobs:
           bun-version: "1.4.2"
       - run: bun scripts/build-enrollment-policy.ts .policy-source --check
   apps:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macOS, iOS]
     runs-on: macos-26-intel
     timeout-minutes: 30
     steps:
@@ -39,13 +43,36 @@ jobs:
         run: |
           xcodegen generate --spec apps/macos/project.yml
           xcodegen generate --spec apps/ios/project.yml
-      - name: Build iPhone app for simulator
-        run: xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/ios-build" -jobs 2 CODE_SIGNING_ALLOWED=NO build
       - name: Exercise Mac synthetic interactions
-        run: xcodebuild -project apps/macos/MediaCenter.xcodeproj -scheme MediaCenter -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/mac-build" -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+        if: matrix.platform == 'macOS'
+        run: xcodebuild -project apps/macos/MediaCenter.xcodeproj -scheme MediaCenter -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/mac-build" -resultBundlePath "$RUNNER_TEMP/mac-normal.xcresult" -parallel-testing-enabled NO -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+      - name: Prepare isolated small iPhone
+        if: matrix.platform == 'iOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime=$(xcrun simctl list runtimes --json | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable") and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")]; assert r,"No installed iOS runtime"; print(sorted(r,key=lambda x:tuple(int(y) for y in x["version"].split(".")))[-1]["identifier"])')
+          device=$(xcrun simctl create MediaCenter-CI com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$runtime")
+          echo "MEDIA_TEST_DEVICE=$device" >> "$GITHUB_ENV"
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl ui "$device" content_size large
+      - name: Exercise iPhone synthetic interactions
+        if: matrix.platform == 'iOS'
+        run: xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-normal.xcresult" -parallel-testing-enabled NO -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+      - name: Capture largest Dynamic Type layouts
+        if: always() && matrix.platform == 'iOS' && env.MEDIA_TEST_DEVICE != ''
+        run: |
+          xcrun simctl ui "$MEDIA_TEST_DEVICE" content_size accessibility-extra-extra-extra-large
+          xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-ax5.xcresult" -parallel-testing-enabled NO -only-testing:MediaCenterUITests/MediaCenterUITests/testSyntheticScreenSnapshots -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: synthetic-native-test-results
-          path: ${{ runner.temp }}/mac-build/Logs/Test/*.xcresult
+          name: synthetic-native-test-results-${{ matrix.platform }}
+          path: ${{ runner.temp }}/*.xcresult
           retention-days: 3
+      - name: Remove owned iPhone simulator
+        if: always() && matrix.platform == 'iOS' && env.MEDIA_TEST_DEVICE != ''
+        run: |
+          xcrun simctl shutdown "$MEDIA_TEST_DEVICE" || true
+          xcrun simctl delete "$MEDIA_TEST_DEVICE"

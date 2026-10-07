@@ -30,6 +30,9 @@ public enum MediaRelease: Hashable, Codable, Sendable {
     switch self {
     case .instant(let date): return date
     case .day(let year, let month, let day):
+      let timeZone = calendar.timeZone
+      var calendar = Calendar(identifier: .gregorian)
+      calendar.timeZone = timeZone
       let components = DateComponents(year: year, month: month, day: day)
       guard let date = calendar.date(from: components),
         calendar.dateComponents([.year, .month, .day], from: date) == components

@@ -20,7 +20,7 @@ struct MediaCaptureView: View {
     VStack(alignment: .leading, spacing: 18) {
       Text("Add to Media Center").font(.title2.bold())
       Text("Paste a link or describe something to save. It joins your queue after the service confirms the saved item.").foregroundStyle(.secondary)
-      TextEditor(text: $input).frame(minHeight: 140).accessibilityIdentifier("capture.input").disabled(submitted || recovered)
+      TextEditor(text: $input).frame(minHeight: 140).accessibilityLabel("Link or description to save").accessibilityIdentifier("capture.input").disabled(submitted || recovered)
       if let receipt = library.workspace.captureReceipts[requestID] {
         Text(receipt.state == "saved" ? "Saved" : receipt.state == "needs_review" ? "Needs review" : "Awaiting confirmation").font(.headline)
         if receipt.state != "saved" { Text("The request is preserved. Acceptance alone does not mean the item was saved.").foregroundStyle(.secondary) }
