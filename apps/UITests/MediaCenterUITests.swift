@@ -27,15 +27,34 @@ import XCTest
     #endif
     let exists = button.waitForExistence(timeout: 10)
     XCTAssertTrue(exists, identifier)
+    reveal(button)
     button.tap()
+  }
+  private func reveal(_ element: XCUIElement) {
+    #if os(iOS)
+    for _ in 0..<12 {
+      if element.exists && element.isHittable { return }
+      ui.swipeUp()
+    }
+    XCTAssertTrue(element.isHittable)
+    #endif
+    XCTAssertTrue(element.waitForExistence(timeout: 10))
   }
   private var writes: String {
     let text = ui.staticTexts["fixture.writes"].firstMatch
-    return (text.value as? String) ?? text.label
+    return text.label.isEmpty ? (text.value as? String) ?? "" : text.label
   }
+  #if os(macOS)
+  func testClosingTheWindowDoesNotHideTheNextLaunch() {
+    XCTAssertTrue(ui.buttons["media.add"].waitForExistence(timeout: 10))
+    ui.buttons["_XCUI:CloseWindow"].tap()
+    app.terminate(); app.launch()
+    XCTAssertTrue(ui.buttons["media.add"].waitForExistence(timeout: 10))
+  }
+  #endif
   func testSyntheticScreenSnapshots() {
-    XCTAssertTrue(ui.buttons["item.youtubeVideo.video-one"].waitForExistence(timeout: 20))
     snapshot("feed")
+    reveal(ui.buttons["item.youtubeVideo.video-one"])
     press("media.add")
     let input = ui.textViews["capture.input"]
     XCTAssertTrue(input.waitForExistence(timeout: 10))
@@ -58,11 +77,12 @@ import XCTest
     press("nav.history")
     XCTAssertTrue(ui.buttons["item.article.article-history"].waitForExistence(timeout: 10))
     press("nav.feed")
+    XCTAssertTrue(ui.buttons["item.tvShow.show-one"].waitForExistence(timeout: 10))
     press("feed.filters")
     press("filter.article")
     press("filters.done")
     XCTAssertTrue(ui.buttons["item.article.article-one"].waitForExistence(timeout: 10))
-    XCTAssertFalse(ui.buttons["item.tvShow.show-one"].exists)
+    XCTAssertTrue(ui.buttons["item.tvShow.show-one"].waitForNonExistence(timeout: 10))
   }
   func testLibrarySearchIncludesSourceTitlesWithoutWriting() {
     press("nav.library")
@@ -75,6 +95,8 @@ import XCTest
     XCTAssertEqual(writes, "Writes: 0")
   }
   func testTVShowExpandsIntoEpisodes() {
+    reveal(ui.buttons["item.tvShow.show-one"])
+    XCTAssertTrue(ui.buttons["item.tvShow.show-one"].label.lowercased().contains("tv show"))
     press("item.tvShow.show-one")
     XCTAssertTrue(ui.staticTexts["First light"].waitForExistence(timeout: 10))
     XCTAssertTrue(ui.staticTexts["Second tide"].exists)

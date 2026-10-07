@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   models:
-    runs-on: macos-26-intel
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
       - run: swift test --package-path packages/MediaKit --jobs 2
@@ -33,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         platform: [macOS, iOS]
-    runs-on: macos-26-intel
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -45,7 +45,7 @@ jobs:
           xcodegen generate --spec apps/ios/project.yml
       - name: Exercise Mac synthetic interactions
         if: matrix.platform == 'macOS'
-        run: xcodebuild -project apps/macos/MediaCenter.xcodeproj -scheme MediaCenter -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/mac-build" -resultBundlePath "$RUNNER_TEMP/mac-normal.xcresult" -parallel-testing-enabled NO -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+        run: xcodebuild -project apps/macos/MediaCenter.xcodeproj -scheme MediaCenter -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/mac-build" -resultBundlePath "$RUNNER_TEMP/mac-normal.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -maximum-test-execution-time-allowance 90 -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - name: Prepare isolated small iPhone
         if: matrix.platform == 'iOS'
         shell: bash
@@ -59,12 +59,12 @@ jobs:
           xcrun simctl ui "$device" content_size large
       - name: Exercise iPhone synthetic interactions
         if: matrix.platform == 'iOS'
-        run: xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-normal.xcresult" -parallel-testing-enabled NO -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+        run: xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-normal.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -maximum-test-execution-time-allowance 90 -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - name: Capture largest Dynamic Type layouts
         if: always() && matrix.platform == 'iOS' && env.MEDIA_TEST_DEVICE != ''
         run: |
           xcrun simctl ui "$MEDIA_TEST_DEVICE" content_size accessibility-extra-extra-extra-large
-          xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-ax5.xcresult" -parallel-testing-enabled NO -only-testing:MediaCenterUITests/MediaCenterUITests/testSyntheticScreenSnapshots -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+          xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-ax5.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -maximum-test-execution-time-allowance 90 -only-testing:MediaCenterUITests/MediaCenterUITests/testSyntheticScreenSnapshots -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - uses: actions/upload-artifact@v4
         if: always()
         with:

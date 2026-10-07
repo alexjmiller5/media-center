@@ -11,8 +11,7 @@ struct MediaDetailView: View {
   @State private var showReview = false
   @State private var showFields = false
   @State private var openedExternal = false
-  @State private var preview: [MediaItem] = []
-  @State private var confirmingSeason = false
+  @State private var seasonSelection: SeasonSelection?
   @State private var changing = false
   @State private var consumptionDate = Date()
   var body: some View {
@@ -61,7 +60,7 @@ struct MediaDetailView: View {
                 Text(season == 0 ? "Specials" : "Season \(season)").font(.headline)
                 Spacer()
                 if season > 0 {
-                  Button("Mark aired episodes finished") { preview = library.airedEpisodes(season: season); confirmingSeason = true }
+                  Button("Mark aired episodes finished") { seasonSelection = .init(season: season, episodes: library.airedEpisodes(season: season)) }
                     .accessibilityIdentifier("season.\(season).finish")
                     .disabled(!library.episodesComplete || library.airedEpisodes(season: season).isEmpty || changing)
                 }
@@ -93,11 +92,11 @@ struct MediaDetailView: View {
       .onChange(of: scenePhase) { _, phase in if phase == .active && openedExternal { openedExternal = false; showReview = true } }
       .sheet(isPresented: $showFields) { MediaUserFieldsView(library: library, identity: identity) }
       .sheet(isPresented: $showReview) { review }
-      .sheet(isPresented: $confirmingSeason) { seasonPreview }
+      .sheet(item: $seasonSelection) { selection in seasonPreview(selection.episodes) }
   }
   private var title: String { library.records[identity]?.item.title ?? library.sources.first { $0.identity.kind == .tvShow && $0.identity.id == identity.id }?.title ?? "Media details" }
   private var review: some View {
-    VStack(alignment: .leading, spacing: 18) {
+    ScrollView { VStack(alignment: .leading, spacing: 18) {
       Text("Update this item?").font(.title2.bold())
       Text("Opening it doesn’t change its status. Choose a status only if you want to record what you watched or read.").foregroundStyle(.secondary)
       if library.canEdit(identity, role: "consumedAt") { DatePicker("Consumption date", selection: $consumptionDate, displayedComponents: .date) }
@@ -107,19 +106,19 @@ struct MediaDetailView: View {
         }
       }
       Button("Leave unchanged") { library.leaveUnchanged(); showReview = false }.accessibilityIdentifier("review.unchanged")
-    }.padding(28).frame(minWidth: 300)
+    }.padding(28) }.frame(minWidth: 300, minHeight: 360)
   }
-  private var seasonPreview: some View {
-    VStack(alignment: .leading, spacing: 18) {
+  private func seasonPreview(_ preview: [MediaItem]) -> some View {
+    ScrollView { VStack(alignment: .leading, spacing: 18) {
       Text("\(preview.count) aired episodes").font(.title2.bold())
       Text("These episodes will be marked finished individually. Future episodes and the show’s status stay unchanged.").foregroundStyle(.secondary)
       ForEach(preview, id: \.identity) { Text($0.title) }
       HStack {
-        Button("Cancel") { confirmingSeason = false }
-        Button("Mark finished") { confirmingSeason = false; Task { changing = true; await library.finish(preview); changing = false } }
+        Button("Cancel") { seasonSelection = nil }
+        Button("Mark finished") { seasonSelection = nil; Task { changing = true; await library.finish(preview); changing = false } }
           .accessibilityIdentifier("season.confirm").buttonStyle(.borderedProminent)
       }
-    }.padding(28).frame(minWidth: 320)
+    }.padding(28) }.frame(minWidth: 320, minHeight: 360)
   }
 }
 
@@ -208,4 +207,10 @@ struct MediaUserFieldsView: View {
     if await library.editFields(identity, values: values) { result = "Updated"; load() }
     else { result = library.message ?? "Could not confirm your changes. Your draft is preserved." }
   }
+}
+
+private struct SeasonSelection: Identifiable {
+  let season: Int
+  let episodes: [MediaItem]
+  var id: Int { season }
 }

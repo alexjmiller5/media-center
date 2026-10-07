@@ -17,6 +17,7 @@ struct MediaCaptureView: View {
     } else { recovered = false }
   }
   var body: some View {
+    ScrollView {
     VStack(alignment: .leading, spacing: 18) {
       Text("Add to Media Center").font(.title2.bold())
       Text("Paste a link or describe something to save. It joins your queue after the service confirms the saved item.").foregroundStyle(.secondary)
@@ -41,7 +42,8 @@ struct MediaCaptureView: View {
           Button("Check receipt") { Task { await library.workspace.reconcile(draft); if library.workspace.captureReceipts[requestID]?.state == "saved" { await library.refresh() } } }.disabled(!library.workspace.isOnline)
         }
       }
-    }.padding(28).frame(minWidth: 320, idealWidth: 520)
+    }.padding(28)
+    }.frame(minWidth: 320, idealWidth: 520, minHeight: 360).scrollDismissesKeyboard(.interactively)
       .task(id: input) {
         do { try await Task.sleep(for: .milliseconds(200)); try Task.checkCancellation(); _ = await preserve() }
         catch { }

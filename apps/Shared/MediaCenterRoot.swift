@@ -50,7 +50,7 @@ struct MediaLibraryView: View {
         Text("MEDIA CENTER").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.bottom, 18)
         ForEach(LibrarySection.allCases, id: \.self) { section in
           Button { library.section = section; selection = nil; Task { await library.refresh() } } label: {
-            Text(section.rawValue.capitalized).font(.body.weight(library.section == section ? .semibold : .regular)).frame(maxWidth: .infinity, alignment: .leading).padding(10)
+            Label(section.rawValue.capitalized, image: "nav." + section.rawValue).font(.body.weight(library.section == section ? .semibold : .regular)).frame(maxWidth: .infinity, alignment: .leading).padding(10).contentShape(Rectangle())
           }.buttonStyle(.plain).background(library.section == section ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8)).accessibilityIdentifier("nav.\(section.rawValue)")
         }
         Spacer()
@@ -67,7 +67,7 @@ struct MediaLibraryView: View {
     TabView(selection: $library.section) {
       ForEach(LibrarySection.allCases, id: \.self) { section in
         NavigationStack { content }
-          .tabItem { Text(section.rawValue.capitalized) }.tag(section).accessibilityIdentifier("nav.\(section.rawValue)")
+          .tabItem { Label(section.rawValue.capitalized, image: "nav." + section.rawValue) }.tag(section).accessibilityIdentifier("nav.\(section.rawValue)")
       }
     }.onChange(of: library.section) { _, _ in selection = nil; Task { await library.refresh() } }
     .sheet(item: $selection) { id in NavigationStack { MediaDetailView(model: model, library: library, identity: id.id) } }
@@ -107,12 +107,12 @@ struct MediaLibraryView: View {
           } else if library.section == .feed {
             ForEach(library.cards) { card in
               Button { selection = .init(id: card.identity) } label: {
-                MediaCardView(item: card.item, title: card.title, subtitle: card.nextEpisode.map { "Next: \($0.title)" } ?? card.sourceTitle, reasons: card.reasons)
+                MediaCardView(item: card.item, kind: card.identity.kind, title: card.title, subtitle: card.nextEpisode.map { "Next: \($0.title)" } ?? card.sourceTitle, reasons: card.reasons)
               }.buttonStyle(.plain).accessibilityIdentifier("item.\(card.identity.kind.rawValue).\(card.identity.id)")
             }
           } else {
             ForEach(library.matchingItems, id: \.identity) { item in
-              Button { selection = .init(id: item.identity) } label: { MediaCardView(item: item, title: item.title, subtitle: nil, reasons: []) }
+              Button { selection = .init(id: item.identity) } label: { MediaCardView(item: item, kind: item.identity.kind, title: item.title, subtitle: nil, reasons: []) }
                 .buttonStyle(.plain).accessibilityIdentifier("item.\(item.identity.kind.rawValue).\(item.identity.id)")
             }
           }
@@ -157,6 +157,8 @@ private struct SourceDetailSelection: Identifiable { let id: SourceIdentity }
 
 struct MediaCardView: View {
   let item: MediaItem
+  let kind: MediaKind
+  @Environment(\.dynamicTypeSize) private var textSize
   let title: String
   let subtitle: String?
   let reasons: Set<FeedReason>
@@ -169,10 +171,10 @@ struct MediaCardView: View {
         }.frame(width: 88, height: 88).clipped().clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
       }
       VStack(alignment: .leading, spacing: 7) {
-        Text(kindLabel(item.identity.kind)).textCase(.uppercase).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+        Text(kindLabel(kind)).textCase(.uppercase).font(.caption.weight(.medium)).foregroundStyle(.secondary)
         Text(title).font(.title3.weight(.semibold)).foregroundStyle(.primary).multilineTextAlignment(.leading)
         if let subtitle { Text(subtitle).font(.callout).foregroundStyle(.secondary) }
-        HStack {
+        (textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout())) {
           Text(item.status)
           if let duration = item.durationMinutes { Text("\(Int(duration.rounded())) min") }
           if reasons.contains(.saved) { Text("Saved") }
@@ -180,7 +182,7 @@ struct MediaCardView: View {
         }.font(.caption).foregroundStyle(.secondary)
       }
       Spacer(minLength: 0)
-    }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(.background, in: RoundedRectangle(cornerRadius: 14))
+    }.padding(20).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).background(.background, in: RoundedRectangle(cornerRadius: 14))
       .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.08)))
   }
  }
