@@ -1,0 +1,59 @@
+name: Build iOS Ad Hoc
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_recipient:
+        description: Public age recipient for this dispatch (keep private identity locally)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  signed-ipa:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      ARTIFACT_RECIPIENT: ${{ inputs.artifact_recipient }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare tools and validate recipient
+        run: |
+          brew install xcodegen age
+          printf '' | age --encrypt --recipient "$ARTIFACT_RECIPIENT" --output "$RUNNER_TEMP/recipient-check.age"
+          python3 scripts/sign_ios_test.py
+          python3 scripts/ios_workflow_test.py
+      - name: Load signing material
+        uses: 1password/load-secrets-action@v5
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          IOS_CERTIFICATE_P12_BASE64: op://Apple Signing/Apple Distribution Cert/p12_base64
+          IOS_CERTIFICATE_PASSWORD: op://Apple Signing/Apple Distribution Cert/password
+          IOS_PROFILE_BASE64: op://Apple Signing/Wildcard Ad Hoc Profile/mobileprovision_base64
+          IOS_DEVICE_ID: op://Media Center/Media Center ENV/IOS_DEVICE_ID
+      - name: Archive and verify
+        run: |
+          : "${IOS_DEVICE_ID:?Set the selected device in the project ENV item}"
+          "$(realpath "$(command -v xcodegen)")" generate --spec apps/ios/project.yml
+          python3 scripts/sign-ios.py --project apps/ios/MediaCenter.xcodeproj --scheme MediaCenter --output "$RUNNER_TEMP/ios-output"
+      - name: Encrypt IPA
+        run: |
+          age --encrypt --recipient "$ARTIFACT_RECIPIENT" --output "$RUNNER_TEMP/ios-output/App.ipa.age" "$RUNNER_TEMP/ios-output/App.ipa"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ios-ad-hoc-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ios-output/App.ipa.age
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Remove plaintext IPA
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          (Path(os.environ['RUNNER_TEMP']) / 'ios-output/App.ipa').unlink(missing_ok=True)
+          PY
