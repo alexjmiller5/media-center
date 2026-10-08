@@ -72,6 +72,31 @@ def test_push_raises_on_http_error():
         client.push("youtube_videos", [{"id": "v1"}])
 
 
+def test_patch_sends_one_revision_guarded_edit():
+    seen = {}
+    revision = {"updated_at": "2026-01-01T00:00:00.000Z", "hub_at": None}
+
+    def handler(request):
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"id": "s1", "revision": revision})
+
+    out = make_client(handler).patch("feeds", "s1", {"feed_since": "x"}, revision)
+    assert out == {"id": "s1", "revision": revision}
+    assert seen == {
+        "path": "/v1/rows/patch",
+        "body": {
+            "table": "feeds",
+            "id": "s1",
+            "values": {"feed_since": "x"},
+            "expected_revision": revision,
+        },
+    }
+    client = make_client(lambda request: httpx.Response(409, json={"error": "revision_conflict"}))
+    with pytest.raises(httpx.HTTPStatusError):
+        client.patch("feeds", "s1", {"feed_since": "x"}, revision)
+
+
 def test_imported_from_row_shape():
     row = imported_from("youtube_channels", "UC123", "youtube_videos", "abc")
     assert row["id"] == "youtube_channels:UC123:abc"

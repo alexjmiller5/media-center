@@ -56,6 +56,9 @@ import XCTest
     #endif
     XCTAssertTrue(element.waitForExistence(timeout: 10))
   }
+  private func receipt(_ state: String) -> Bool {
+    ui.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@", "capture.receipt", state)).firstMatch.waitForExistence(timeout: 10)
+  }
   private var writes: String {
     let text = ui.staticTexts["fixture.writes"].firstMatch
     return text.label.isEmpty ? (text.value as? String) ?? "" : text.label
@@ -92,7 +95,8 @@ import XCTest
     XCTAssertTrue(ui.buttons["media.save"].waitForExistence(timeout: 10))
     if ProcessInfo.processInfo.environment["MEDIA_TEST_AX5"] == "1" {
       let title = ui.staticTexts["How a coastline changes"].firstMatch
-      XCTAssertGreaterThan(title.frame.width, ui.frame.width * 0.75, "Large titles need the sheet width")
+      let done = ui.buttons["Done"].firstMatch
+      XCTAssertGreaterThanOrEqual(done.frame.minY, title.frame.maxY - 1, "At accessibility sizes Done stacks below the title instead of squeezing it")
     }
     snapshot("detail")
   }
@@ -152,7 +156,7 @@ import XCTest
     input.tap()
     input.typeText("Save https://example.test/new-article")
     press("capture.save")
-    XCTAssertTrue(ui.staticTexts["Saved"].waitForExistence(timeout: 10))
+    XCTAssertTrue(receipt("Saved"))
     press("capture.done")
     XCTAssertTrue(ui.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "item.article.captured-")).firstMatch.waitForExistence(timeout: 10))
   }
@@ -208,7 +212,7 @@ import XCTest
     XCTAssertEqual(ui.textViews["capture.input"].value as? String, "Save https://example.test/later")
     XCTAssertEqual(writes, "Writes: 0")
     press("capture.save")
-    XCTAssertTrue(ui.staticTexts["Saved"].waitForExistence(timeout: 10))
+    XCTAssertTrue(receipt("Saved"))
     XCTAssertEqual(writes, "Writes: 1")
   }
   func testSourceFeedStartIsAvailableWithoutWritingOnOpen() {
@@ -262,11 +266,10 @@ import XCTest
     XCTAssertTrue(input.waitForExistence(timeout: 10))
     input.tap(); input.typeText("Save https://example.test/uncertain")
     press("capture.save")
-    XCTAssertTrue(ui.staticTexts["Awaiting confirmation"].waitForExistence(timeout: 10))
-    XCTAssertFalse(ui.staticTexts["Saved"].exists)
+    XCTAssertTrue(receipt("Awaiting confirmation"))
     reveal(ui.buttons["Check receipt"])
     ui.buttons["Check receipt"].tap()
-    XCTAssertTrue(ui.staticTexts["Awaiting confirmation"].exists)
+    XCTAssertTrue(receipt("Awaiting confirmation"))
     press("capture.done")
     XCTAssertEqual(writes, "Writes: 0")
   }

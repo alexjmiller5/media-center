@@ -36,6 +36,26 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(cleanup["if"], "always()")
         self.assertIn("unlink", cleanup["run"])
 
+        secrets = next(
+            s for s in steps if s.get("uses", "").startswith("1password/load-secrets-action@")
+        )
+        refs = secrets["env"]
+        self.assertNotIn(
+            "IOS_PROFILE_BASE64", refs, "the app-specific profile comes from App Store Connect"
+        )
+        self.assertFalse(any("Wildcard" in str(v) for v in refs.values()))
+        self.assertEqual(refs["IOS_DEVICE_ID"], "op://Media Center/Media Center ENV/IOS_DEVICE_ID")
+        download = next(s for s in steps if s.get("name") == "Download app-specific Ad Hoc profile")
+        self.assertEqual(download["env"]["PROFILE_ID"], "${{ vars.IOS_PROVISIONING_PROFILE_ID }}")
+        self.assertIn("IOS_APP_ADHOC", download["run"])
+        self.assertIn("::add-mask::", download["run"])
+        names = [s.get("name") for s in steps]
+        self.assertLess(names.index("Stamp identifiable build"), names.index("Archive and verify"))
+        self.assertLess(
+            names.index("Archive and verify"), names.index("Verify exported build identity")
+        )
+        self.assertLess(names.index("Verify exported build identity"), names.index("Encrypt IPA"))
+
 
 if __name__ == "__main__":
     unittest.main()

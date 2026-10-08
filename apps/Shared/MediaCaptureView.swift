@@ -23,7 +23,7 @@ struct MediaCaptureView: View {
       Text("Paste a link or describe something to save. It joins your queue after the service confirms the saved item.").foregroundStyle(.secondary)
       TextEditor(text: $input).frame(minHeight: 140).accessibilityLabel("Link or description to save").accessibilityIdentifier("capture.input").disabled(submitted || recovered)
       if let receipt = library.workspace.captureReceipts[requestID] {
-        Text(receipt.state == "saved" ? "Saved" : receipt.state == "needs_review" ? "Needs review" : "Awaiting confirmation").font(.headline)
+        Text(receipt.state == "saved" ? "Saved" : receipt.state == "needs_review" ? "Needs review" : "Awaiting confirmation").font(.headline).accessibilityIdentifier("capture.receipt")
         if receipt.state != "saved" { Text("The request is preserved. Acceptance alone does not mean the item was saved.").foregroundStyle(.secondary) }
       }
       if let message = library.message { Text(message).foregroundStyle(.red) }

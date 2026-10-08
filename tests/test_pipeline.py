@@ -36,6 +36,17 @@ class FakeHub:
         self.tables[table] = list(stored.values())
         return {"upserted": len(rows) - len(rejected), "rejected": rejected}
 
+    def patch(self, table, id, values, expected_revision):
+        row = next(r for r in self.tables[table] if r["id"] == id)
+        if {k: row.get(k) for k in ("updated_at", "hub_at")} != expected_revision:
+            request = httpx.Request("POST", "https://hub.test/v1/rows/patch")
+            raise httpx.HTTPStatusError(
+                "conflict", request=request, response=httpx.Response(409, request=request)
+            )
+        self.pushed.setdefault(table, []).append({"id": id, **values})
+        row.update(values, updated_at="2026-10-08T00:00:00.001Z")
+        return {"id": id, "revision": {"updated_at": row["updated_at"], "hub_at": None}}
+
     def insert(self, table, rows):
         # Keep the combined write log used by existing assertions.
         self.pushed.setdefault(table, []).extend(rows)
@@ -462,7 +473,44 @@ def test_sync_feeds_catalogs_unfollowed_sources_and_preserves_read_status():
     assert len(hub.tables["provenance"]) == 3
 
 
+def test_sync_feed_boundaries_starts_only_followed_sources_without_one(mocker):
+    mocker.patch("core.pipeline.now_iso", return_value="2026-10-08T09:30:00.000Z")
+    kept = "2026-01-01T12:00:00.000Z"
+
+    def source(id, follow, feed_since=None, **extra):
+        return {"id": id, "follow": follow, "feed_since": feed_since, "updated_at": "r", **extra}
+
+    hub = FakeHub(
+        {
+            "tv_shows": [source("new", 1), source("set", 1, kept), source("off", 0)],
+            "youtube_channels": [source("gone", 1, deleted_at="r"), source("chan", 1)],
+            "feeds": [source("feed", 1, hub_at="h")],
+        }
+    )
+    real_patch = hub.patch
+
+    def racing_patch(table, id, values, revision):
+        if id == "feed":  # another writer edited the source after our read
+            hub.tables["feeds"][0]["updated_at"] = "newer"
+        return real_patch(table, id, values, revision)
+
+    hub.patch = racing_patch
+    assert pipeline.sync_feed_boundaries(hub) == {"started": 2, "conflicts": 1, "failed": 0}
+    boundary = {r["id"]: r["feed_since"] for t in hub.tables.values() for r in t}
+    assert boundary == {
+        "new": "2026-10-08T09:30:00.000Z",
+        "set": kept,
+        "off": None,
+        "gone": None,
+        "chan": "2026-10-08T09:30:00.000Z",
+        "feed": None,
+    }
+    assert {r["id"] for rows in hub.pushed.values() for r in rows} == {"new", "chan"}
+    assert all(set(r) == {"id", "feed_since"} for rows in hub.pushed.values() for r in rows)
+
+
 def test_run_daily_returns_all_three_sections(mocker):
+    mocker.patch("core.pipeline.sync_feed_boundaries", return_value={"started": 0})
     mocker.patch("core.pipeline.sync_tv", return_value={"shows": 0, "episodes": 0, "failed": 0})
     mocker.patch(
         "core.pipeline.sync_youtube", return_value={"channels": 0, "videos": 0, "failed": 0}
@@ -470,7 +518,7 @@ def test_run_daily_returns_all_three_sections(mocker):
     mocker.patch("core.pipeline.sync_feeds", return_value={"feeds": 0, "articles": 0, "failed": 0})
     settings = mocker.Mock(tmdb_api_key="t", youtube_api_key="y")
     out = pipeline.run_daily(FakeHub({}), httpx.Client(), settings)
-    assert set(out) == {"tv", "youtube", "feeds"}
+    assert set(out) == {"boundaries", "tv", "youtube", "feeds"}
 
 
 @pytest.mark.parametrize("backfilled", [0, 1])
