@@ -23,6 +23,7 @@ import Testing
   var pendingRevocation: CheckedContinuation<CoreSessionReply, any Error>?
   var revokes = 0
   var replyCount = 0
+  var replyError: (any Error)?
   let binding = RecordBinding(
     table: "items",
     fields: [
@@ -57,6 +58,7 @@ import Testing
       return .init(status: status == 200 ? 200 : 401, data: .object(["logged_out": .bool(true)]))
     }
     replyCount += 1
+    if let replyError { throw replyError }
     if delay { return try await withCheckedThrowingContinuation { pendingReply = $0 } }
     return try sessionReply()
   }

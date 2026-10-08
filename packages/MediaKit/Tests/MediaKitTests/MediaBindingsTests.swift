@@ -31,7 +31,7 @@ import Testing
   let properties = fields.values.map { column in
     PropertyMetadata(
       column: column, type: column == "saved" ? "bool" : column == "status" ? "select" : "text",
-      readOnly: false)
+      readOnly: false, options: column == "status" ? ["Open", "Done"] : nil)
   }
   let scopes = Set(
     fields.values.flatMap { ["tables:read:items:\($0)", "catalog:read:items:\($0)"] })
@@ -49,5 +49,30 @@ import Testing
   bindings.items["article"]?.fields.removeValue(forKey: "updatedAt")
   #expect(throws: BindingError.missingField("article", "updatedAt")) {
     try bindings.validate(scopes: scopes, metadata: ["items": properties])
+  }
+}
+
+@Test func statusMappingsMustExactlyMatchTheCatalogOptions() throws {
+  let fields = [
+    "id": "id", "title": "title", "status": "status", "saved": "saved", "updatedAt": "updated_at",
+    "hubAt": "hub_at", "deletedAt": "deleted_at",
+  ]
+  let scopes = Set(
+    fields.values.flatMap { ["tables:read:items:\($0)", "catalog:read:items:\($0)"] })
+  func metadata(_ options: [String]?) -> [String: [PropertyMetadata]] {
+    ["items": fields.values.map { column in
+      PropertyMetadata(
+        column: column, type: column == "saved" ? "bool" : column == "status" ? "select" : "text",
+        readOnly: false, options: column == "status" ? options : nil)
+    }]
+  }
+  let bindings = MediaBindings(
+    items: ["article": RecordBinding(table: "items", fields: fields, statuses: ["Open": .notStarted, "Done": .finished])],
+    sources: [:])
+  try bindings.validate(scopes: scopes, metadata: metadata(["Done", "Open"]))
+  for invalid in [nil, [], ["Open"], ["Open", "Done", "Archived"], ["Open", "Finished"]] as [[String]?] {
+    #expect(throws: BindingError.invalidStatusMapping("article")) {
+      try bindings.validate(scopes: scopes, metadata: metadata(invalid))
+    }
   }
 }

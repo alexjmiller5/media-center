@@ -100,6 +100,10 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
     guard body?.count ?? 0 <= 65536 else { throw HubError.invalidRequest }
     let response: CoreSessionReply
     do { response = try await reply(path: path, method: method, body: body, limit: limit) } catch {
+      // A cancelled read is the caller leaving, not an outage. A cancelled write may have been sent.
+      if !mutation, error is CancellationError || (error as? URLError)?.code == .cancelled {
+        throw CancellationError()
+      }
       throw mutation ? HubError.uncertain : HubError.unavailable
     }
     switch response.status {

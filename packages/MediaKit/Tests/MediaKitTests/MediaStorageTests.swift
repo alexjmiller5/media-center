@@ -83,7 +83,8 @@ private func storedPage(_ id: String) -> CachedMediaPage {
   let restarted = DraftStore(directory: root.appendingPathComponent("drafts"))
   #expect(try await restarted.load(connection: owner) == [draft])
   #expect(try await restarted.load(connection: connection("two.example")).isEmpty)
-  #expect(try await restarted.load(connection: connection(revision: "v2")).isEmpty)
+  // Drafts belong to the service profile, so a renewed revision or credential still recovers them.
+  #expect(try await restarted.load(connection: connection(revision: "v2")) == [draft])
   try await restarted.discard(id: draft.id, connection: owner)
   #expect(try await restarted.load(connection: owner).isEmpty)
 }

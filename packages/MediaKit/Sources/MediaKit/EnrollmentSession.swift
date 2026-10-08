@@ -132,6 +132,10 @@ public struct PendingApproval: Equatable, Sendable {
       connection = validated
       state = .connected
       approval = nil
+      // One device credential per installation: earlier ones are revoked once this one works.
+      for earlier in (try? store.all()) ?? [] where earlier.state == .active && earlier.id != active.id {
+        await revoke(earlier)
+      }
     } catch {
       guard current == generation else { return }
       if let error = error as? URLError,
@@ -159,7 +163,9 @@ public struct PendingApproval: Equatable, Sendable {
     record = credential
     transport = client
     do {
-      let reply = try await client.reply(path: "v1/session", method: "GET", body: nil, limit: 65536)
+      let reply: CoreSessionReply
+      do { reply = try await client.reply(path: "v1/session", method: "GET", body: nil, limit: 65536) }
+      catch let error as URLError where error.code != .cancelled { throw HubError.unavailable }
       let validated = try await validate(reply: reply, credential: credential, transport: client)
       guard current == generation else {
         client.close()
@@ -207,6 +213,11 @@ public struct PendingApproval: Equatable, Sendable {
       cleanupPending = try store.all().contains { $0.state != .active && $0.id != record?.id }
     } catch { cleanupPending = true }
   }
+  /// Revokes a stored credential that can no longer connect (revoked, changed or refused).
+  public func forget(_ credential: StoredCredential) async {
+    guard credential.id != record?.id else { return }
+    await revoke(credential)
+  }
   private func revoke(_ credential: StoredCredential) async {
     var revoked = credential
     revoked.state = .revoking
@@ -216,8 +227,13 @@ public struct PendingApproval: Equatable, Sendable {
       defer { client.close() }
       let reply = try await client.reply(
         path: "v1/session", method: "POST", body: nil, limit: 65536)
-      let result: CoreSessionRevocationResult = try policy.invoke("sessionRevocationResult", reply)
-      if result.state == .revoked { try store.remove(id: credential.id) }
+      if reply.status == 401, credential.session != nil {
+        // A once-active credential the service no longer accepts is already unusable.
+        try store.remove(id: credential.id)
+      } else {
+        let result: CoreSessionRevocationResult = try policy.invoke("sessionRevocationResult", reply)
+        if result.state == .revoked { try store.remove(id: credential.id) }
+      }
       cleanupPending = try store.all().contains { $0.state != .active && $0.id != record?.id }
     } catch { cleanupPending = true }
   }

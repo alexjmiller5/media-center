@@ -509,6 +509,28 @@ def test_sync_feed_boundaries_starts_only_followed_sources_without_one(mocker):
     assert all(set(r) == {"id", "feed_since"} for rows in hub.pushed.values() for r in rows)
 
 
+def test_sync_feed_boundaries_counts_a_failed_patch_and_continues():
+    hub = FakeHub(
+        {
+            "tv_shows": [{"id": "show", "follow": 1, "updated_at": "r"}],
+            "feeds": [{"id": "feed", "follow": 1, "updated_at": "r"}],
+        }
+    )
+    real_patch = hub.patch
+
+    def failing_patch(table, id, values, revision):
+        if table == "tv_shows":
+            request = httpx.Request("POST", "https://hub.test/v1/rows/patch")
+            raise httpx.HTTPStatusError(
+                "down", request=request, response=httpx.Response(503, request=request)
+            )
+        return real_patch(table, id, values, revision)
+
+    hub.patch = failing_patch
+    assert pipeline.sync_feed_boundaries(hub) == {"started": 1, "conflicts": 0, "failed": 1}
+    assert hub.tables["feeds"][0]["feed_since"]
+
+
 def test_run_daily_returns_all_three_sections(mocker):
     mocker.patch("core.pipeline.sync_feed_boundaries", return_value={"started": 0})
     mocker.patch("core.pipeline.sync_tv", return_value={"shows": 0, "episodes": 0, "failed": 0})
@@ -718,9 +740,11 @@ def test_kind_failures_log_safe_details_and_continue(http_error):
     assert all(value not in json.dumps(logs) for value in (secret, body, message))
     error_type = "HTTPStatusError" if http_error else "RuntimeError"
     expected = {"event": "kind_failed", "kind": "tv", "error": error_type, "log_level": "error"}
+    boundary = {**expected, "event": "feed_boundary_failed", "kind": "tv_shows"}
     if http_error:
-        expected["http_status"] = 503
-    assert logs == [expected]
+        expected["http_status"] = boundary["http_status"] = 503
+    assert logs == [boundary, expected]
+    assert result["boundaries"] == {"started": 0, "conflicts": 0, "failed": 1}
     assert result["tv"] == {"failed": 1, "error": error_type}
     assert result["youtube"] == {"channels": 0, "videos": 0, "failed": 0, "rejected": 0}
     assert result["feeds"] == {"feeds": 0, "articles": 0, "failed": 0, "rejected": 0}

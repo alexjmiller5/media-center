@@ -18,7 +18,7 @@ import Testing
     library.leaveUnchanged()
     #expect(service.writeCount == 0)
     await library.loadEpisodes(showID: "show-one")
-    let preview = library.airedEpisodes(season: 1)
+    let preview = library.airedEpisodes(season: 1, showID: "show-one")
     #expect(preview.count == 2)
     await library.finish(preview)
     #expect(library.bulkResults.filter(\.committed).count == 1)

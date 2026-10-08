@@ -38,6 +38,8 @@ public struct BulkEditResult: Identifiable, Sendable {
   @ObservationIgnored private let calendar: Calendar
   @ObservationIgnored private var pager: FeedPager?
   @ObservationIgnored private var generation = 0
+  @ObservationIgnored private var episodeLoad = UUID()
+  public private(set) var episodesShowID: String?
   private var nextEpisodes: [MediaItem] = []
   private var sourceRows: [SourceIdentity: CoreRow] = [:]
   public init(connection: MediaConnection, workspace: MediaWorkspace, now: @autoclosure @escaping () -> Date = Date(), calendar: Calendar = .current, defaults: UserDefaults? = nil) {
@@ -83,6 +85,7 @@ public struct BulkEditResult: Identifiable, Sendable {
       }
       let plans = Dictionary(uniqueKeysWithValues: streams.map { ($0.id, $0) })
       let sort = section == .feed ? preferences.sort : preferences.sort == .recommended ? .newest : preferences.sort
+      let scope = section.rawValue
       let calendar = calendar
       pager = FeedPager(streams: streams.map(\.id), orderedBefore: {
         FeedQueryPlan.precedes($0, $1, sort: sort, calendar: calendar)
@@ -90,7 +93,8 @@ public struct BulkEditResult: Identifiable, Sendable {
         guard let self, self.generation == current, let plan = plans[id],
           let binding = self.connection.bindings.items[plan.kind.rawValue] else { throw PagerError.generationChanged }
         var query = plan.query; query.cursor = cursor
-        await self.workspace.load(query, key: "browse:\(id):\(cursor ?? "first")")
+        // Feed filters contain the current time; offline pages are found by their stream position.
+        await self.workspace.load(query, key: "browse:\(id):\(cursor ?? "first")", cacheKey: "\(scope):\(id):\(cursor ?? "first")")
         guard self.generation == current else { throw PagerError.generationChanged }
         guard let page = self.workspace.rows["browse:\(id):\(cursor ?? "first")"] else { throw self.workspace.error ?? HubError.unavailable }
         let decoded = try page.rows.map { try MediaRecord(kind: plan.kind, row: $0, binding: binding) }
@@ -129,7 +133,7 @@ public struct BulkEditResult: Identifiable, Sendable {
           FeedQueryPlan.predicate(season, "gte", .number(1)), FeedQueryPlan.predicate(number, "gte", .number(1))
         ]), order: [.init(column: season, direction: "asc"), .init(column: number, direction: "asc")], limit: 1)
       let key = "next:\(show.identity.id)"
-      await workspace.load(query, key: key)
+      await workspace.load(query, key: key, cacheKey: key)
       guard generation == self.generation else { return }
       guard let page = workspace.rows[key] else { throw workspace.error ?? HubError.unavailable }
       if let row = page.rows.first {
@@ -178,6 +182,7 @@ public struct BulkEditResult: Identifiable, Sendable {
     records[id] = record
   }
   public func loadEpisodes(showID: String) async {
+    let load = UUID(); episodeLoad = load; episodesShowID = showID
     episodes = []; episodesComplete = false; bulkResults = []
     guard let binding = connection.bindings.items[MediaKind.tvEpisode.rawValue], let parent = binding.fields["sourceID"] else { return }
     var query = FeedQueryPlan.browse(binding: binding, sort: .oldest)
@@ -187,7 +192,8 @@ public struct BulkEditResult: Identifiable, Sendable {
     do {
       for number in 0..<20 {
         await workspace.load(query, key: "episodes:\(showID):\(number)")
-        guard current == generation else { return }
+        // A later show's details replace this load; its pages never join them.
+        guard current == generation, episodeLoad == load, !Task.isCancelled else { return }
         guard let page = workspace.rows["episodes:\(showID):\(number)"] else { throw workspace.error ?? HubError.unavailable }
         let decoded = try page.rows.map { try MediaRecord(kind: .tvEpisode, row: $0, binding: binding) }
         for record in decoded { records[record.item.identity] = record }
@@ -196,11 +202,11 @@ public struct BulkEditResult: Identifiable, Sendable {
         guard seen.insert(next).inserted else { throw PagerError.stalledCursor }
         query.cursor = next
       }
-    } catch { message = "Could not load all episodes. Bulk changes are unavailable." }
+    } catch { if episodeLoad == load { message = "Could not load all episodes. Bulk changes are unavailable." } }
   }
-  public func airedEpisodes(season: Int) -> [MediaItem] {
-    guard episodesComplete else { return [] }
-    return episodes.filter { $0.season == season && ($0.episode ?? 0) > 0 && $0.isActive && $0.release?.isReleased(at: now, calendar: calendar) == true }
+  public func airedEpisodes(season: Int, showID: String) -> [MediaItem] {
+    guard episodesComplete, episodesShowID == showID else { return [] }
+    return episodes.filter { $0.source?.id == showID && $0.season == season && ($0.episode ?? 0) > 0 && $0.isActive && $0.release?.isReleased(at: now, calendar: calendar) == true }
   }
   public func canEdit(_ id: MediaIdentity, role: String) -> Bool {
     guard workspace.isOnline, workspace.connection == connection.identity,

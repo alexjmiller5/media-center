@@ -214,6 +214,39 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
     return out
 
 
+SOURCE_TABLES = ("tv_shows", "youtube_channels", "feeds")
+
+
+def sync_feed_boundaries(hub: HubClient) -> dict:
+    """Start the feed boundary of a followed source that has none.
+
+    Follow actions set `feed_since` themselves; this covers sources created
+    already followed (or followed by another writer) so their new releases
+    reach the feed. A set boundary or an unfollowed source is never touched.
+    """
+    # ponytail: boundary = first daily run that sees the follow (up to a day late);
+    # read follow history if same-day precision ever matters.
+    now = now_iso()
+    out = {"started": 0, "conflicts": 0, "failed": 0}
+    for table in SOURCE_TABLES:
+        try:
+            for row in hub.pull(table, ["id", "follow", "feed_since", "updated_at", "hub_at"]):
+                if not row.get("follow") or row.get("feed_since"):
+                    continue
+                revision = {"updated_at": row["updated_at"], "hub_at": row.get("hub_at")}
+                try:
+                    hub.patch(table, row["id"], {"feed_since": now}, revision)
+                    out["started"] += 1
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 409:
+                        raise
+                    out["conflicts"] += 1  # edited since our read; the next run re-reads it
+        except Exception as exc:
+            out["failed"] += 1
+            _log_failure("feed_boundary_failed", exc, kind=table)
+    return out
+
+
 def _safe(kind: str, fn, *args) -> dict:
     """One kind's failure (e.g. a hub 5xx on its first pull) never aborts the run."""
     try:
@@ -225,6 +258,7 @@ def _safe(kind: str, fn, *args) -> dict:
 
 def run_daily(hub: HubClient, http: httpx.Client, settings) -> dict:
     return {
+        "boundaries": _safe("boundaries", sync_feed_boundaries, hub),
         "tv": _safe("tv", sync_tv, hub, http, settings.tmdb_api_key),
         "youtube": _safe("youtube", sync_youtube, hub, http, settings.youtube_api_key),
         "feeds": _safe("feeds", sync_feeds, hub, http),

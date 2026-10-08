@@ -7,7 +7,11 @@ import Observation
   public let connection: MediaConnection
   public let now: Date
   public var nextWriteError: HubError?
+  /// Simulates a network outage for reads and writes.
+  public var offline = false
   public private(set) var writeCount = 0
+  /// Every write request, including refused ones, so a replay loop is visible.
+  public private(set) var writeAttempts = 0
   public private(set) var tables: [String: [CoreRow]] = [:]
   private var captures: [String: CaptureReceipt] = [:]
   public init(now: Date = Date(timeIntervalSince1970: 1_790_856_000)) throws {
@@ -82,6 +86,7 @@ import Observation
     tables["channels"] = [sourceRow("channel-one", "Low Tide Studio")]
   }
   public func query(_ query: RowQuery) async throws -> RowPage {
+    if offline { throw HubError.unavailable }
     var rows = tables[query.table, default: []].filter { row in query.filter.map { accepts($0, row: row) } ?? true }
     var order = query.order ?? []
     if !order.contains(where: { $0.column == "id" }) { order.append(.init(column: "id", direction: "asc")) }
@@ -100,6 +105,8 @@ import Observation
     return .init(rows: page.map { row in Dictionary(uniqueKeysWithValues: query.columns.map { ($0, row[$0] ?? .null) }) }, nextCursor: offset + page.count < rows.count ? String(offset + page.count) : nil)
   }
   public func patch(_ edit: ConditionalEdit) async throws -> PatchReceipt {
+    writeAttempts += 1
+    if offline { throw HubError.uncertain }
     if let nextWriteError { throw nextWriteError }
     writeCount += 1
     guard edit.id != "episode-two" else { throw HubError.rejected(422) }
@@ -113,6 +120,8 @@ import Observation
     return .init(id: edit.id, revision: revision)
   }
   public func submitCapture(_ request: CaptureRequest) async throws -> CaptureReceipt {
+    writeAttempts += 1
+    if offline { throw HubError.uncertain }
     if let nextWriteError { throw nextWriteError }
     if let receipt = captures[request.requestId] { return receipt }
     writeCount += 1

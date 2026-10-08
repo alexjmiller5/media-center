@@ -62,7 +62,8 @@ private var recordRow: CoreRow {
       type: role == "sourceID"
         ? "ref"
         : role == "duration"
-          ? "int" : role == "saved" ? "bool" : role == "status" ? "select" : "text", readOnly: true)
+          ? "int" : role == "saved" ? "bool" : role == "status" ? "select" : "text", readOnly: true,
+      options: role == "status" ? ["Unseen", "Done"] : nil)
   }
   try MediaBindings(items: ["youtubeVideo": binding], sources: [:]).validate(
     scopes: scopes, metadata: ["clips": metadata])

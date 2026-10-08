@@ -30,7 +30,7 @@ public actor DraftStore {
   private let directory: URL
   public init(directory: URL) { self.directory = directory }
   private func folder(_ connection: ConnectionIdentity) -> URL {
-    directory.appendingPathComponent(connection.storageKey, isDirectory: true)
+    directory.appendingPathComponent(connection.draftKey, isDirectory: true)
   }
   private func location(_ id: UUID, _ connection: ConnectionIdentity) -> URL {
     folder(connection).appendingPathComponent(id.uuidString.lowercased() + ".json")
@@ -57,7 +57,9 @@ public actor DraftStore {
         throw MediaStorageError.invalidDraft
       }
       let entry = try JSONDecoder().decode(Entry.self, from: Data(contentsOf: url))
-      guard entry.connection == connection else { throw MediaStorageError.invalidDraft }
+      guard entry.connection.endpoint == connection.endpoint,
+        entry.connection.profile == connection.profile
+      else { throw MediaStorageError.invalidDraft }
       return entry.draft
     }
   }

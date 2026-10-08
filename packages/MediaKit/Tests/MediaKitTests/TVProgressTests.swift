@@ -104,3 +104,15 @@ func catalogDaysRemainGregorianWithTheDeviceTimeZone(identifier: Calendar.Identi
   #expect(FeedQueryPlan.day(now, calendar: device) == FeedQueryPlan.day(now, calendar: gregorian))
   #expect(TVProgress.nextEpisode(episodes: [episode(1, release: future)], now: now, calendar: device) == nil)
 }
+
+@Test func groupedShowCardDisplaysItsNextEpisodeWhateverTheInputOrder() {
+  let source = MediaSource(
+    identity: showSource, title: "Synthetic series", followed: true,
+    feedSince: now.addingTimeInterval(-86400 * 3))
+  let episodes = [episode(3), episode(1, status: "Finished"), episode(2)]
+  for order in [episodes, episodes.reversed(), [episodes[1], episodes[2], episodes[0]]] {
+    let card = FeedPolicy.cards(items: order, sources: [source], now: now, calendar: utc).first
+    #expect(card?.nextEpisode?.episode == 2)
+    #expect(card?.item.identity == card?.nextEpisode?.identity)
+  }
+}

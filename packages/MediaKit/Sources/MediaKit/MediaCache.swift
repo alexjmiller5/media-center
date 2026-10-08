@@ -35,6 +35,11 @@ public struct ConnectionIdentity: Codable, Hashable, Sendable {
     let data = try! JSONEncoder().encode([endpoint.absoluteString, profile, revision, credentialID])
     return Self.digest(data)
   }
+  /// Drafts are user input for one service profile; they outlive a credential or profile revision.
+  var draftKey: String {
+    let data = try! JSONEncoder().encode([endpoint.absoluteString, profile])
+    return Self.digest(data)
+  }
   static func digest(_ data: Data) -> String {
     SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
   }

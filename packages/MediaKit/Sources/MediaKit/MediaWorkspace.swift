@@ -67,7 +67,10 @@ public enum EditState: Equatable, Sendable {
     sendingCaptures = []
     error = nil
   }
-  public func load(_ query: RowQuery, key: String) async {
+  /// Snapshot browsing has no validated service; reconnecting requires session revalidation.
+  public var isBrowsingSnapshot: Bool { connection != nil && service == nil }
+  /// `cacheKey` must identify the page independently of time-dependent filter values.
+  public func load(_ query: RowQuery, key: String, cacheKey stable: String? = nil) async {
     guard let connection else { return }
     let current = generation
     let encoder = JSONEncoder()
@@ -76,15 +79,16 @@ public enum EditState: Equatable, Sendable {
       error = .invalidRequest
       return
     }
-    let cacheKey = key + ":" + ConnectionIdentity.digest(queryData)
-    if !isOnline {
+    let cacheKey = stable ?? (key + ":" + ConnectionIdentity.digest(queryData))
+    guard let service else {
       await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current)
       return
     }
-    guard let service else { return }
     do {
       let result = try await service.query(query)
       guard current == generation else { return }
+      // A successful read on the validated session ends a transient outage.
+      isOnline = true
       rows[key] = result
       cachedPages.remove(key)
       error = nil
@@ -92,6 +96,8 @@ public enum EditState: Equatable, Sendable {
       try? await cache?.store(
         .init(items: [], nextCursor: result.nextCursor, rows: result.rows), key: cacheKey,
         connection: connection)
+    } catch is CancellationError {
+      return
     } catch {
       guard current == generation else { return }
       let reason = error as? HubError ?? .unavailable
@@ -162,12 +168,19 @@ public enum EditState: Equatable, Sendable {
             intent: intent.rawValue))
         guard current == generation else { return }
         captureReceipts[draft.id] = receipt
+        if receipt.state == "saved" { await forget(draft.id, generation: current) }
       } catch {
         guard current == generation else { return }
         let reason = error as? HubError ?? .uncertain
         if await handle(reason, generation: current) { return }
+        // The service definitively refused it; anything else may still have been accepted.
+        let refused: Bool
+        switch reason {
+        case .forbidden, .rejected, .invalidRequest: refused = true
+        default: refused = false
+        }
         captureReceipts[draft.id] = .init(
-          requestId: draft.id.uuidString.lowercased(), state: "uncertain")
+          requestId: draft.id.uuidString.lowercased(), state: refused ? "rejected" : "uncertain")
       }
       if current == generation { sendingCaptures.remove(draft.id) }
     case .edit(let edit):
@@ -177,6 +190,7 @@ public enum EditState: Equatable, Sendable {
         let receipt = try await service.patch(edit)
         guard current == generation else { return }
         editStates[draft.id] = .committed(receipt)
+        await forget(draft.id, generation: current)
       } catch {
         guard current == generation else { return }
         let reason = error as? HubError ?? .uncertain
@@ -196,6 +210,7 @@ public enum EditState: Equatable, Sendable {
         let receipt = try await service.captureReceipt(id: draft.id.uuidString.lowercased())
         guard current == generation else { return }
         captureReceipts[draft.id] = receipt
+        if receipt.state == "saved" { await forget(draft.id, generation: current) }
       case .edit(let edit):
         let columns = Set(edit.values.keys).union(["id", "updated_at", "hub_at", "deleted_at"])
           .sorted()
@@ -209,6 +224,12 @@ public enum EditState: Equatable, Sendable {
         currentValues[draft.id] = page.rows.first
       }
     } catch { _ = await handle(error as? HubError ?? .unavailable, generation: current) }
+  }
+  /// A confirmed change no longer needs its preserved input; its receipt stays visible.
+  private func forget(_ id: UUID, generation current: UInt64) async {
+    guard let connection else { return }
+    try? await store.discard(id: id, connection: connection)
+    if current == generation { drafts.removeAll { $0.id == id } }
   }
   private func handle(_ reason: HubError, generation current: UInt64) async -> Bool {
     guard current == generation else { return true }

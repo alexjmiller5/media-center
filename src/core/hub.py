@@ -1,7 +1,8 @@
 """life-data hub client - the one place media-center reads and writes rows.
 
 Pull whole tables (`/v1/rows/pull`), atomically create missing rows
-(`/v1/rows/insert`), and update only owned columns (`/v1/rows/push`).
+(`/v1/rows/insert`), update only owned columns (`/v1/rows/push`), and make
+revision-guarded single-row edits (`/v1/rows/patch`).
 Provenance edges use the same insert-only contract as new items.
 """
 
@@ -45,6 +46,21 @@ class HubClient:
         resp = self._http.post(
             f"{self._url}/v1/rows/push",
             json={"table": table, "columns": sorted({k for r in rows for k in r}), "rows": rows},
+            headers=self._headers,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def patch(self, table: str, id: str, values: dict, expected_revision: dict) -> dict:
+        """Edit one live row only if it still has the revision we read; 409 otherwise."""
+        resp = self._http.post(
+            f"{self._url}/v1/rows/patch",
+            json={
+                "table": table,
+                "id": id,
+                "values": values,
+                "expected_revision": expected_revision,
+            },
             headers=self._headers,
         )
         resp.raise_for_status()

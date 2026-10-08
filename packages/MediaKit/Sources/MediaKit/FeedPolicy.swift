@@ -60,7 +60,7 @@ public enum FeedPolicy {
     let sourceMap = Dictionary(
       sources.map { ($0.identity, $0) }, uniquingKeysWith: { _, latest in latest })
     var cards: [MediaIdentity: FeedCard] = [:]
-    for item in unique.values {
+    for item in unique.values.sorted(by: { ($0.identity.kind.rawValue, $0.identity.id) < ($1.identity.kind.rawValue, $1.identity.id) }) {
       let sourceID =
         item.source
         ?? (item.identity.kind == .tvShow
@@ -94,9 +94,13 @@ public enum FeedPolicy {
         $0.identity.kind == .tvEpisode
           && $0.source == SourceIdentity(kind: .tvShow, id: identity.id)
       }
-      cards[identity]?.nextEpisode = TVProgress.nextEpisode(
-        episodes: Array(episodes), now: now, calendar: calendar)
-      if cards[identity]?.nextEpisode != nil { cards[identity]?.isUpcoming = false }
+      let next = TVProgress.nextEpisode(episodes: Array(episodes), now: now, calendar: calendar)
+      cards[identity]?.nextEpisode = next
+      if let next {
+        cards[identity]?.isUpcoming = false
+        // Without the show's own record, the card shows the episode it leads to, not an arbitrary one.
+        if unique[identity] == nil { cards[identity]?.item = next }
+      }
     }
     return cards.values.sorted { precedes($0, $1, sort: preferences.sort, calendar: calendar) }
   }

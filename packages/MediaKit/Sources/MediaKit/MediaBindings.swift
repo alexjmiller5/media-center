@@ -63,12 +63,11 @@ public struct MediaBindings: Codable, Equatable, Sendable {
         required: ["id", "title", "status", "saved", "updatedAt", "hubAt", "deletedAt"],
         scopes: scopes, metadata: metadata)
       guard !binding.statuses.isEmpty else { throw BindingError.invalidStatusMapping(role) }
-      if let statusColumn = binding.fields["status"],
+      // Every catalog option needs a consumption meaning, and nothing outside the catalog is offered.
+      guard let statusColumn = binding.fields["status"],
         let options = metadata[binding.table]?.first(where: { $0.column == statusColumn })?.options,
-        !Set(options).isSubset(of: Set(binding.statuses.keys))
-      {
-        throw BindingError.invalidStatusMapping(role)
-      }
+        !options.isEmpty, Set(options) == Set(binding.statuses.keys)
+      else { throw BindingError.invalidStatusMapping(role) }
     }
     for (role, binding) in sources {
       guard SourceKind(rawValue: role) != nil else { throw BindingError.invalidRole(role) }

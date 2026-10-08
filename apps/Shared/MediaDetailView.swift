@@ -65,9 +65,9 @@ struct MediaDetailView: View {
                 Text(season == 0 ? "Specials" : "Season \(season)").font(.headline)
                 if !textSize.isAccessibilitySize { Spacer() }
                 if season > 0 {
-                  Button("Mark aired episodes finished") { seasonSelection = .init(season: season, episodes: library.airedEpisodes(season: season)) }
+                  Button("Mark aired episodes finished") { seasonSelection = .init(season: season, episodes: library.airedEpisodes(season: season, showID: identity.id)) }
                     .accessibilityIdentifier("season.\(season).finish")
-                    .disabled(!library.episodesComplete || library.airedEpisodes(season: season).isEmpty || changing)
+                    .disabled(!library.episodesComplete || library.airedEpisodes(season: season, showID: identity.id).isEmpty || changing)
                 }
               }
               ForEach(library.episodes.filter { $0.season == season }, id: \.identity) { episode in

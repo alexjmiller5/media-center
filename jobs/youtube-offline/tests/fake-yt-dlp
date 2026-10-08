@@ -1,0 +1,21 @@
+#!/bin/sh
+# Test double for yt-dlp: honors -o and prints the final path like
+# --print after_move:filepath. FAKE_YTDLP_FAIL=1 fails like an unavailable video.
+[ -n "$FAKE_YTDLP_ARGV" ] && printf '%s\n' "$@" > "$FAKE_YTDLP_ARGV"
+out="" url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift ;;
+    https://*) url="$1" ;;
+  esac
+  shift
+done
+id="${url##*v=}"
+if [ -n "$FAKE_YTDLP_FAIL" ]; then
+  echo "WARNING: something minor" >&2
+  echo "ERROR: [youtube] $id: Video unavailable" >&2
+  exit 1
+fi
+path=$(printf '%s' "$out" | sed "s/%(id)s/$id/; s/%(ext)s/mp4/")
+cp "$FAKE_YTDLP_SOURCE" "$path"
+echo "$path"
