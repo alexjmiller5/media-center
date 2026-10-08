@@ -1,0 +1,19 @@
+name: youtube-offline
+
+on:
+  push:
+    branches: [main]
+    paths: ["jobs/youtube-offline/**", ".github/workflows/youtube-offline.yml"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jobs/youtube-offline
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv run pytest
+      - run: uv run ruff check . && uv run ruff format --check .

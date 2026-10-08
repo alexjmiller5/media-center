@@ -230,6 +230,14 @@ def test_download_runs_yt_dlp_with_the_configured_format(settings, monkeypatch):
     assert "--merge-output-format" in argv
 
 
+def test_default_format_prefers_h264_within_720p():
+    from youtube_offline.config import DEFAULT_FORMAT
+
+    first = DEFAULT_FORMAT.split("/")[0]
+    assert "vcodec^=avc1" in first and "height<=720" in first
+    assert all("height<=720" in choice for choice in DEFAULT_FORMAT.split("/"))
+
+
 def test_download_failure_carries_the_yt_dlp_error(settings, monkeypatch):
     settings = settings.model_copy(update={"yt_dlp": str(FAKE_YT_DLP)})
     monkeypatch.setenv("FAKE_YTDLP_FAIL", "1")

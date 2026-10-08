@@ -236,6 +236,31 @@ remote browser session and approve the displayed code. Both verified fields
 are saved together in the project vault through JSON stdin; no plaintext
 credential cache is written. Individual Modal field minting is refused.
 
+## YouTube offline job (mac mini)
+
+`jobs/youtube-offline/` is a separate uv project and sub-flake
+(`github:alexjmiller5/media-center?dir=jobs/youtube-offline`): package plus
+`darwinModules.default` (`services.media-center.youtube-offline`), installed on
+the mac mini as a kept-alive launchd user agent. It follows the mini-job
+template's outbound long-poll architecture: it consumes a Life Data
+`durable-pull-v1` subscription on `youtube_videos.offline_requested`, treats
+events as wake-ups, reconciles from the rows (also at startup), and ACKs a batch
+only after its pass succeeds. For each requested row that is not `ready` it
+downloads with nixpkgs yt-dlp/ffmpeg (H.264 mp4 at <= 720p first, so AVFoundation
+can play it anywhere), uploads content-addressed immutable parts
+(`youtube/<id>/<sha256>`, at most `part_bytes` = 90 MiB each, under Cloudflare's
+100 MB request body limit) and patches `offline_status`/`offline_file`/
+`offline_bytes`/`offline_error` against the row's current revision. Retries
+5 min/30 min/2 h/12 h then give up; budgets persist in the state dir before
+each attempt and reset when the request toggles. A storage cap refuses new
+downloads with `storage_full`; retained files cannot be deleted through the hub,
+so every `ready` row counts. Its credential is its own (grants in the job
+README), read from the mini's login Keychain via `credentialCommand`; the
+operator copy is `Media Center YouTube Offline Life Data Token` in the project
+vault. Tests use an in-process fake hub and a fake yt-dlp (`just test` in the
+job directory; CI `youtube-offline.yml`). The job writes no other column and
+never touches the poller's tables.
+
 ## Native delivery
 
 - iPhone: manual `build-ios.yml` (workflow_dispatch, public age recipient input).

@@ -13,8 +13,13 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# 720p cap, mp4: prefer native mp4+m4a streams, else anything at <= 720p remuxed.
-DEFAULT_FORMAT = "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/bv*[height<=720]+ba/b[height<=720]"
+# 720p cap, mp4. H.264 first: AVFoundation decodes AV1 only in hardware on recent
+# chips, so offline copies must play on any Apple device. Then any mp4, then remux.
+DEFAULT_FORMAT = (
+    "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/b[height<=720][vcodec^=avc1]"
+    "/bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]"
+    "/bv*[height<=720]+ba/b[height<=720]"
+)
 
 
 class CredentialError(Exception):
