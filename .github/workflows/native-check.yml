@@ -2,9 +2,9 @@ name: Native checks
 
 on:
   push:
-    paths: ["apps/**", "packages/MediaKit/**", "scripts/build-enrollment-policy.ts", ".github/workflows/native-check.yml"]
+    paths: ["apps/**", "packages/MediaKit/**", "scripts/**", ".github/workflows/native-check.yml", ".github/workflows/build-ios.yml", ".github/workflows/release-macos.yml"]
   pull_request:
-    paths: ["apps/**", "packages/MediaKit/**", "scripts/build-enrollment-policy.ts", ".github/workflows/native-check.yml"]
+    paths: ["apps/**", "packages/MediaKit/**", "scripts/**", ".github/workflows/native-check.yml", ".github/workflows/build-ios.yml", ".github/workflows/release-macos.yml"]
 
 permissions:
   contents: read
@@ -15,6 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: swift test --package-path packages/MediaKit --jobs 2
+      - name: Signing and release helpers
+        run: for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test; do python3 "scripts/$t.py"; done
   policy:
     runs-on: ubuntu-latest
     steps:

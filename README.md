@@ -75,8 +75,8 @@ just run ios --synthetic --test-id "$(uuidgen)"   # Debug app with isolated synt
 ```
 
 Keep derived data outside cloud-synced folders (`IOS_DERIVED_DATA`).
-Native CI runs both platform builds and synthetic UI interactions, including
-largest Dynamic Type iPhone layouts. Fixtures never enroll a personal device. The
+Native CI runs the model tests, the signing/release helper tests, both platform
+builds and synthetic UI interactions, including largest Dynamic Type iPhone layouts. Fixtures never enroll a personal device. The
 generated canonical enrollment policy is checked against its pinned Life Data
 revision; see [service contracts](tests/contracts/README.md).
 

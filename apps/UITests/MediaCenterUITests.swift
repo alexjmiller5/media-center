@@ -25,6 +25,10 @@ import XCTest
     #else
     button = identifier.hasPrefix("filter.") ? ui.switches[identifier] : identifier.hasPrefix("nav.") ? ui.tabBars.buttons[String(identifier.dropFirst(4)).capitalized] : ui.buttons[identifier]
     #endif
+    #if os(iOS)
+    // Lazy lists create rows only once they scroll into view.
+    if !button.waitForExistence(timeout: 3) { reveal(button) }
+    #endif
     let exists = button.waitForExistence(timeout: 10)
     XCTAssertTrue(exists, identifier)
     reveal(button)
