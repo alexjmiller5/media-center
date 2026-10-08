@@ -35,22 +35,22 @@ struct MediaDetailView: View {
                 #else
                 openURL(url)
                 #endif
-              }.accessibilityIdentifier("media.open")
+              }.buttonStyle(.borderedProminent).accessibilityIdentifier("media.open")
             }
             if library.canEdit(identity, role: "saved") {
               Button(item.saved ? "Unsave" : "Save") { Task { changing = true; await library.edit(identity, role: "saved", value: .bool(!item.saved)); changing = false } }
-                .accessibilityIdentifier("media.save").disabled(changing)
+                .buttonStyle(.bordered).accessibilityIdentifier("media.save").disabled(changing)
             }
           }
           if ["note", "tags", "consumedAt"].contains(where: { library.canEdit(identity, role: $0) }) {
-            Button("Edit fields") { showFields = true }.accessibilityIdentifier("media.fields")
+            Button("Edit fields") { showFields = true }.buttonStyle(.bordered).accessibilityIdentifier("media.fields")
           }
           if library.canEdit(identity, role: "status"), let binding = library.connection.bindings.items[identity.kind.rawValue] {
             Menu("Change status") {
               ForEach(binding.statuses.keys.sorted(), id: \.self) { status in
                 Button(status) { Task { changing = true; await library.setConsumption(identity, status: status, date: consumptionDate); changing = false } }
               }
-            }.disabled(changing)
+            }.buttonStyle(.bordered).disabled(changing)
           }
           #if DEBUG
           if let synthetic = model.synthetic { Button("Revoke preview access") { synthetic.nextWriteError = .revoked }.accessibilityIdentifier("fixture.revoke"); Button("Change preview profile") { synthetic.nextWriteError = .profileChanged }.accessibilityIdentifier("fixture.profile-change") }
@@ -117,12 +117,19 @@ struct MediaDetailView: View {
       Text("Opening it doesn’t change its status. Choose a status only if you want to record what you watched or read.").foregroundStyle(.secondary)
       if library.canEdit(identity, role: "consumedAt") { DatePicker("Consumption date", selection: $consumptionDate, displayedComponents: .date) }
       if let binding = library.connection.bindings.items[identity.kind.rawValue], library.canEdit(identity, role: "status") {
-        ForEach(binding.statuses.keys.sorted(), id: \.self) { status in
-          Button(status) { Task { await library.setConsumption(identity, status: status, date: consumptionDate); library.leaveUnchanged(); showReview = false } }
+        ForEach(reviewOrder(binding), id: \.self) { status in
+          let record = Button(status) { Task { await library.setConsumption(identity, status: status, date: consumptionDate); library.leaveUnchanged(); showReview = false } }
+          if binding.statuses[status] == .finished { record.buttonStyle(.borderedProminent) } else { record.buttonStyle(.bordered) }
         }
       }
-      Button("Leave unchanged") { library.leaveUnchanged(); showReview = false }.accessibilityIdentifier("review.unchanged")
+      Button("Leave unchanged") { library.leaveUnchanged(); showReview = false }.buttonStyle(.bordered).accessibilityIdentifier("review.unchanged")
     }.padding(28) }.frame(minWidth: 300, minHeight: 360)
+  }
+  /// Finishing is the likely answer after watching or reading, so it leads.
+  private func reviewOrder(_ binding: RecordBinding) -> [String] {
+    let rank: [ConsumptionState] = [.finished, .watchedParts, .inProgress, .gaveUp, .priority, .notStarted, .other]
+    func position(_ label: String) -> Int { binding.statuses[label].flatMap { rank.firstIndex(of: $0) } ?? rank.count }
+    return binding.statuses.keys.sorted { (position($0), $0) < (position($1), $1) }
   }
   private func seasonPreview(_ preview: [MediaItem]) -> some View {
     ScrollView { VStack(alignment: .leading, spacing: 18) {

@@ -169,7 +169,7 @@ struct MediaLibraryView: View {
       }
     } else {
       ForEach(library.matchingItems, id: \.identity) { item in
-        mediaRow(item.identity, content: MediaCardView(item: item, kind: item.identity.kind, title: item.title, subtitle: nil, reasons: []))
+        mediaRow(item.identity, content: MediaCardView(item: item, kind: item.identity.kind, title: item.title, subtitle: library.sources.first { $0.identity == item.source && !$0.isDeleted }?.title, reasons: []))
       }
     }
     if library.loading { ProgressView().frame(maxWidth: .infinity) }

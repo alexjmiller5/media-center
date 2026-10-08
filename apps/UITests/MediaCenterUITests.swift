@@ -109,6 +109,9 @@ import XCTest
     XCTAssertTrue(ui.buttons["review.unchanged"].waitForNonExistence(timeout: 10))
     ui.buttons["Done"].firstMatch.tap()
     reveal(media("item.tvShow.show-one"))
+    #if os(iOS)
+    ui.swipeUp()  // show the whole card above the tab bar
+    #endif
     snapshot("tv-card")
     press("nav.library")
     XCTAssertTrue(media("item.article.article-one").waitForExistence(timeout: 10))
