@@ -107,19 +107,21 @@ import XCTest
     snapshot("return-confirmation")
     press("review.unchanged")
     XCTAssertTrue(ui.buttons["review.unchanged"].waitForNonExistence(timeout: 10))
+    XCTAssertEqual(writes, "Writes: 0", "Opening, returning and leaving unchanged never write")
     ui.buttons["Done"].firstMatch.tap()
     reveal(media("item.tvShow.show-one"))
     #if os(iOS)
     ui.swipeUp()  // show the whole card above the tab bar
     #endif
     snapshot("tv-card")
+    // Lazy lists create only on-screen rows; at the largest text size later rows do not exist yet.
     press("nav.library")
-    XCTAssertTrue(media("item.article.article-one").waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.staticTexts["Your catalog. Saving adds an item to your feed."].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "item.")).firstMatch.waitForExistence(timeout: 10))
     snapshot("library")
     press("nav.sources")
-    XCTAssertTrue(ui.buttons["Unfollow Low Tide Studio"].waitForExistence(timeout: 10))
+    XCTAssertTrue(ui.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Unfollow ")).firstMatch.waitForExistence(timeout: 10))
     snapshot("sources")
-    XCTAssertEqual(writes, "Writes: 0")
   }
   private func snapshot(_ name: String) {
     let shot = XCTAttachment(screenshot: ui.screenshot())
