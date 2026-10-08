@@ -30,6 +30,7 @@ import Observation
         synthetic = try SyntheticMediaService()
         if args.contains("--conflicting-writes") { synthetic?.nextWriteError = .conflict }
         if args.contains("--uncertain-writes") { synthetic?.nextWriteError = .uncertain }
+        if args.contains("--offline") { synthetic?.offline = true }
       } catch { self.error = "Could not initialize preview data." }
       return
     }
@@ -45,8 +46,11 @@ import Observation
       do {
         try await workspace.connect(identity: synthetic.connection.identity, service: synthetic)
         library = MediaLibrary(connection: synthetic.connection, workspace: workspace, now: synthetic.now, calendar: ProcessInfo.processInfo.arguments.contains("--buddhist-calendar") ? Calendar(identifier: .buddhist) : .current)
+        if ProcessInfo.processInfo.arguments.contains("--offline") {
+          // Offline launch: the cached snapshot path, with no validated service.
+          workspace.browseOffline(identity: synthetic.connection.identity)
+        }
         await library?.refresh()
-        if ProcessInfo.processInfo.arguments.contains("--offline") { workspace.isOnline = false }
       } catch { self.error = "Could not open preview data." }
       return
     }
@@ -61,9 +65,25 @@ import Observation
           workspace.browseOffline(identity: cached.identity)
           library = MediaLibrary(connection: cached, workspace: workspace, defaults: .standard)
           await library?.refresh()
-        } else { self.error = "Reconnect to validate your access and media configuration." }
+        } else {
+          // A credential that can no longer connect is revoked, not kept beside a new enrollment.
+          if error as? HubError != .unavailable { await enrollment.forget(credential) }
+          self.error = "Reconnect to validate your access and media configuration."
+        }
       }
     } catch { self.error = "Could not read the device’s secure connection." }
+  }
+  /// Ends an outage: a connected session retries its reads; a cached snapshot revalidates first.
+  func retry() async {
+    #if DEBUG
+    if synthetic != nil { await library?.refresh(); return }
+    #endif
+    guard let library else { return }
+    guard library.workspace.isBrowsingSnapshot else { await library.refresh(); return }
+    guard let enrollment, !starting, let credential = try? enrollment.storedConnections().first else { return }
+    starting = true; defer { starting = false }
+    do { try await enrollment.restore(credential); try await attach(); error = nil }
+    catch { self.error = error as? HubError == .unavailable ? nil : "Reconnect to validate your access and media configuration." }
   }
   func begin() -> URL? {
     guard let enrollment, let url = URL(string: endpoint) else { error = "Enter your Life Data HTTPS address."; return nil }

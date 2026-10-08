@@ -21,8 +21,9 @@ struct MediaCenterRoot: View {
           } else {
             Button("Connect") { if let url = model.begin() { openURL(url) } }.buttonStyle(.borderedProminent).disabled(model.starting)
           }
-          if let error = model.error { Text(error).foregroundStyle(.red) }
+          if let error = model.error { Text(error).foregroundStyle(.errorText) }
           if model.enrollment?.state == .expired { Text("Approval expired. Connect again to request a new code.") }
+          if model.enrollment?.state == .failed { Text("Life Data refused this device, or its media configuration is invalid. Nothing was connected; check the service setup, then connect again.").foregroundStyle(.errorText) }
           if model.enrollment?.cleanupPending == true { Text("A previous device request still needs revocation. Reconnect when the service is available.").foregroundStyle(.secondary) }
           if model.starting { ProgressView() }
         }.padding(32).frame(maxWidth: 480)
@@ -57,7 +58,8 @@ struct MediaLibraryView: View {
         ForEach(LibrarySection.allCases, id: \.self) { section in
           Button { library.section = section; selection = nil; Task { await library.refresh() } } label: {
             Label(section.rawValue.capitalized, image: "nav." + section.rawValue).font(.body.weight(library.section == section ? .semibold : .regular)).frame(maxWidth: .infinity, alignment: .leading).padding(10).contentShape(Rectangle())
-          }.buttonStyle(.plain).background(library.section == section ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8)).accessibilityIdentifier("nav.\(section.rawValue)")
+          }.buttonStyle(.plain).background(library.section == section ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityAddTraits(library.section == section ? .isSelected : []).accessibilityIdentifier("nav.\(section.rawValue)")
         }
         Spacer()
         Button("Connection") { showSettings = true }
@@ -96,8 +98,14 @@ struct MediaLibraryView: View {
   }
   private var content: some View {
     VStack(spacing: 0) {
-      if !library.workspace.isOnline { Text("Offline - viewing cached media. Reconnect before making changes.").font(.callout).padding().frame(maxWidth: .infinity).background(.yellow.opacity(0.12)) }
-      if let message = library.message { Text(message).font(.callout).padding().foregroundStyle(.red) }
+      if !library.workspace.isOnline {
+        HStack {
+          Text("Offline - viewing cached media. Reconnect before making changes.").font(.callout)
+          Spacer()
+          Button("Try again") { Task { await model.retry() } }.disabled(model.starting || library.loading).accessibilityIdentifier("offline.retry")
+        }.padding().frame(maxWidth: .infinity).background(.yellow.opacity(0.12))
+      }
+      if let message = library.message { Text(message).font(.callout).padding().foregroundStyle(.errorText) }
       #if os(macOS)
       HStack {
         Text("\(selectedItems.count) selected").font(.caption).foregroundStyle(.secondary)
@@ -117,10 +125,10 @@ struct MediaLibraryView: View {
       if savingSelection { ProgressView("Updating selected items") }
       if !selectionResults.isEmpty {
         Text("\(selectionSaved ? "Saved" : "Unsaved") \(selectionResults.filter(\.committed).count) of \(selectionResults.count) selected items").padding(8)
-        ForEach(selectionResults.filter { !$0.committed }) { result in Text("Could not update \(result.title). Review Drafts before trying again.").foregroundStyle(.red).padding(8) }
+        ForEach(selectionResults.filter { !$0.committed }) { result in Text("Could not update \(result.title). Review Drafts before trying again.").foregroundStyle(.errorText).padding(8) }
       }
       #if DEBUG
-      if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeCount)").font(.caption).accessibilityIdentifier("fixture.writes").padding(8) }
+      if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeAttempts)").font(.caption).accessibilityIdentifier("fixture.writes").padding(8) }
       #endif
       #else
       ScrollView {
@@ -129,7 +137,11 @@ struct MediaLibraryView: View {
       }
       #endif
     }.navigationTitle(library.section.rawValue.capitalized)
+      #if os(iOS)
+      .searchable(text: $library.preferences.search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search loaded media")
+      #else
       .searchable(text: $library.preferences.search, prompt: "Search loaded media")
+      #endif
       .toolbar {
         ToolbarItem { Button("Filters") { showFilters = true }.accessibilityIdentifier("feed.filters") }
         ToolbarItem { Button("Add") { showAdd = true }.accessibilityIdentifier("media.add") }
@@ -170,7 +182,7 @@ struct MediaLibraryView: View {
     if library.hasMore { Button("Load more") { Task { await library.loadMore() } }.disabled(library.loading).frame(maxWidth: .infinity) }
     if library.incomplete { Text("Some sources or pages have not been loaded. These results may be incomplete.").font(.footnote).foregroundStyle(.secondary) }
     #if DEBUG && os(iOS)
-    if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeCount)").font(.caption).accessibilityIdentifier("fixture.writes") }
+    if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeAttempts)").font(.caption).accessibilityIdentifier("fixture.writes") }
     #endif
   }
   @ViewBuilder private func mediaRow(_ id: MediaIdentity, content: MediaCardView) -> some View {

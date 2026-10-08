@@ -47,6 +47,11 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
       table: "items", id: "one", values: ["saved": .bool(true)],
       expectedRevision: .init(updatedAt: "2026-01-01T00:00:00.000Z", hubAt: nil))
   }
+  @Test func cancelledReadsAreNotOutagesButCancelledWritesStayUncertain() async throws {
+    StubProtocol.install { _ in throw URLError(.cancelled) }
+    await #expect(throws: CancellationError.self) { _ = try await client().query(query) }
+    await #expect(throws: HubError.uncertain) { _ = try await client().patch(edit) }
+  }
   @Test func revokedForbiddenAndCursorConflictRemainDistinct() async throws {
     let client = try client()
     for (status, error) in [(401, HubError.revoked), (403, .forbidden), (409, .conflict)] {

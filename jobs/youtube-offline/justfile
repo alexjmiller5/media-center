@@ -1,0 +1,27 @@
+set shell := ["bash", "-cu"]
+export UV_PROJECT_ENVIRONMENT := env_var("HOME") + "/.cache/uv-venvs/media-center-youtube-offline"
+
+default:
+    @just --list
+
+# The long-poll daemon with the caller's environment (YOUTUBE_OFFLINE_* variables)
+dev:
+    uv run youtube-offline watch
+
+# One reconciliation pass, no polling
+run:
+    uv run youtube-offline once
+
+test:
+    uv run pytest
+
+# All static analysis (read-only, CI-safe)
+check:
+    uv run ruff check . && uv run ruff format --check .
+
+fmt:
+    uv run ruff format . && uv run ruff check --fix .
+
+# Tail the installed agent's log (on the mini)
+logs:
+    tail -F "${XDG_STATE_HOME:-$HOME/.local/state}/media-center/youtube-offline/youtube-offline.log"

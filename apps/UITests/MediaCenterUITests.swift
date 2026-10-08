@@ -57,12 +57,14 @@ import XCTest
     XCTAssertTrue(element.waitForExistence(timeout: 10))
   }
   private func receipt(_ state: String) -> Bool {
-    ui.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@", "capture.receipt", state)).firstMatch.waitForExistence(timeout: 10)
+    // macOS exposes static text as its value, iOS as its label.
+    ui.staticTexts.matching(NSPredicate(format: "identifier == %@ AND (label == %@ OR value == %@)", "capture.receipt", state, state)).firstMatch.waitForExistence(timeout: 10)
   }
-  private var writes: String {
-    let text = ui.staticTexts["fixture.writes"].firstMatch
+  private func text(_ identifier: String) -> String {
+    let text = ui.staticTexts[identifier].firstMatch
     return text.label.isEmpty ? (text.value as? String) ?? "" : text.label
   }
+  private var writes: String { text("fixture.writes") }
   #if os(macOS)
   func testKeyboardSelectAllAndSaveHasExplicitReceipts() {
     let row = ui.descendants(matching: .any)["item.youtubeVideo.video-one"].firstMatch
@@ -73,7 +75,7 @@ import XCTest
     XCTAssertTrue(ui.staticTexts["Saved 3 of 3 selected items"].waitForExistence(timeout: 10))
     XCTAssertEqual(writes, "Writes: 3")
     ui.typeKey(.return, modifierFlags: [])
-    XCTAssertFalse(ui.buttons["media.save"].exists)
+    XCTAssertFalse(ui.buttons["media.save"].waitForExistence(timeout: 3), "Return opens details only for a single selection")
   }
   func testClosingTheWindowDoesNotHideTheNextLaunch() {
     XCTAssertTrue(ui.buttons["media.add"].waitForExistence(timeout: 10))
@@ -94,11 +96,27 @@ import XCTest
     press("item.youtubeVideo.video-one")
     XCTAssertTrue(ui.buttons["media.save"].waitForExistence(timeout: 10))
     if ProcessInfo.processInfo.environment["MEDIA_TEST_AX5"] == "1" {
-      let title = ui.staticTexts["How a coastline changes"].firstMatch
+      let title = ui.staticTexts["detail.title"].firstMatch
       let done = ui.buttons["Done"].firstMatch
       XCTAssertGreaterThanOrEqual(done.frame.minY, title.frame.maxY - 1, "At accessibility sizes Done stacks below the title instead of squeezing it")
     }
     snapshot("detail")
+    press("media.open")
+    press("synthetic.return")
+    XCTAssertTrue(ui.buttons["review.unchanged"].waitForExistence(timeout: 10))
+    snapshot("return-confirmation")
+    press("review.unchanged")
+    XCTAssertTrue(ui.buttons["review.unchanged"].waitForNonExistence(timeout: 10))
+    ui.buttons["Done"].firstMatch.tap()
+    reveal(media("item.tvShow.show-one"))
+    snapshot("tv-card")
+    press("nav.library")
+    XCTAssertTrue(media("item.article.article-one").waitForExistence(timeout: 10))
+    snapshot("library")
+    press("nav.sources")
+    XCTAssertTrue(ui.buttons["Unfollow Low Tide Studio"].waitForExistence(timeout: 10))
+    snapshot("sources")
+    XCTAssertEqual(writes, "Writes: 0")
   }
   private func snapshot(_ name: String) {
     let shot = XCTAttachment(screenshot: ui.screenshot())
@@ -166,13 +184,15 @@ import XCTest
     press("synthetic.return")
     press("review.unchanged")
     XCTAssertEqual(writes, "Writes: 0")
-    XCTAssertTrue(ui.staticTexts["Unseen"].exists)
+    XCTAssertEqual(text("media.status"), "Unseen")
   }
   func testReadOnlySourceFactsHaveNoEditors() {
     press("item.youtubeVideo.video-one")
-    XCTAssertFalse(ui.textFields["edit.title"].exists)
-    XCTAssertFalse(ui.textFields["edit.duration"].exists)
-    XCTAssertTrue(ui.buttons["media.save"].exists)
+    XCTAssertTrue(ui.buttons["media.save"].waitForExistence(timeout: 10))
+    press("media.fields")
+    XCTAssertTrue(ui.textViews["edit.note"].waitForExistence(timeout: 10))
+    XCTAssertEqual(ui.textFields.count, 0, "Title, duration and other source facts have no editors")
+    XCTAssertEqual(writes, "Writes: 0")
   }
   func testSavedItemSurvivesUnfollowingWithoutChangingConsumption() {
     press("item.youtubeVideo.video-one")
@@ -186,7 +206,7 @@ import XCTest
     press("nav.feed")
     press("item.youtubeVideo.video-one")
     XCTAssertEqual(ui.buttons["media.save"].label, "Unsave")
-    XCTAssertTrue(ui.staticTexts["Unseen"].exists)
+    XCTAssertEqual(text("media.status"), "Unseen")
     XCTAssertEqual(writes, "Writes: 2")
   }
   func testUserNotesAreExplicitlyApplied() {
@@ -257,7 +277,7 @@ import XCTest
     press("media.save")
     XCTAssertTrue(ui.staticTexts["This item changed elsewhere. Review its current values before trying again."].waitForExistence(timeout: 10))
     XCTAssertEqual(ui.buttons["media.save"].label, "Save")
-    XCTAssertEqual(writes, "Writes: 0")
+    XCTAssertEqual(writes, "Writes: 1", "One refused request, never replayed")
   }
   func testUncertainCaptureRequiresReadOnlyReceiptCheck() {
     app.terminate(); app.launchArguments.append("--uncertain-writes"); app.launch()
@@ -271,7 +291,7 @@ import XCTest
     ui.buttons["Check receipt"].tap()
     XCTAssertTrue(receipt("Awaiting confirmation"))
     press("capture.done")
-    XCTAssertEqual(writes, "Writes: 0")
+    XCTAssertEqual(writes, "Writes: 1", "Checking a receipt never resubmits")
   }
   func testNonGregorianCalendarNeverIncludesFutureEpisodesInBulk() {
     app.terminate()

@@ -23,11 +23,12 @@ struct MediaCaptureView: View {
       Text("Paste a link or describe something to save. It joins your queue after the service confirms the saved item.").foregroundStyle(.secondary)
       TextEditor(text: $input).frame(minHeight: 140).accessibilityLabel("Link or description to save").accessibilityIdentifier("capture.input").disabled(submitted || recovered)
       if let receipt = library.workspace.captureReceipts[requestID] {
-        Text(receipt.state == "saved" ? "Saved" : receipt.state == "needs_review" ? "Needs review" : "Awaiting confirmation").font(.headline).accessibilityIdentifier("capture.receipt")
-        if receipt.state != "saved" { Text("The request is preserved. Acceptance alone does not mean the item was saved.").foregroundStyle(.secondary) }
+        Text(receipt.state == "saved" ? "Saved" : receipt.state == "needs_review" ? "Needs review" : receipt.state == "rejected" ? "Not saved" : "Awaiting confirmation").font(.headline).accessibilityIdentifier("capture.receipt")
+        if receipt.state == "rejected" { Text("The service refused this request. Your text stays in Drafts; edit it into a new capture.").foregroundStyle(.secondary) }
+        else if receipt.state != "saved" { Text("The request is preserved. Acceptance alone does not mean the item was saved.").foregroundStyle(.secondary) }
       }
-      if let message = library.message { Text(message).foregroundStyle(.red) }
-      if let error { Text(error).foregroundStyle(.red) }
+      if let message = library.message { Text(message).foregroundStyle(.errorText) }
+      if let error { Text(error).foregroundStyle(.errorText) }
       if recovered { Text("This draft keeps its original request identity. Checking its receipt does not submit it.").font(.footnote).foregroundStyle(.secondary) }
       HStack {
         Button("Done") { Task { if await preserve() { dismiss() } } }.accessibilityIdentifier("capture.done")
@@ -38,7 +39,7 @@ struct MediaCaptureView: View {
             Task { submitted = await library.capture(MediaDraft(id: requestID, input: input, intent: .save)); sending = false }
           }.buttonStyle(.borderedProminent).accessibilityIdentifier("capture.save").disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending || !library.workspace.isOnline)
         }
-        if let draft = library.workspace.drafts.first(where: { $0.id == requestID }), (submitted || recovered), library.workspace.captureReceipts[requestID]?.state != "saved" {
+        if let draft = library.workspace.drafts.first(where: { $0.id == requestID }), (submitted || recovered), !["saved", "rejected"].contains(library.workspace.captureReceipts[requestID]?.state) {
           Button("Check receipt") { Task { await library.workspace.reconcile(draft); if library.workspace.captureReceipts[requestID]?.state == "saved" { await library.refresh() } } }.disabled(!library.workspace.isOnline)
         }
       }
@@ -88,14 +89,15 @@ struct MediaDraftsView: View {
                   if let current = library.workspace.currentValues[draft.id] { Text("Current: " + display(current[column])).foregroundStyle(.secondary) }
                 }
                 Button("Read current values") { Task { await library.workspace.reconcile(draft) } }.disabled(!library.workspace.isOnline)
+                  .accessibilityLabel("Read current values for \(edit.values.keys.sorted().joined(separator: ", "))")
                 Text("Review the item’s fields before applying a new change. This draft will not be retried automatically.").font(.footnote).foregroundStyle(.secondary)
               }
-              Button("Discard draft", role: .destructive) { discarding = draft }
+              Button("Discard draft", role: .destructive) { discarding = draft }.accessibilityLabel("Discard \(summary(draft))")
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
           }
         }
       }
-      if let error { Text(error).foregroundStyle(.red) }
+      if let error { Text(error).foregroundStyle(.errorText) }
     }.padding(24).frame(minWidth: 320, idealWidth: 540, minHeight: 400)
       .sheet(item: $capture) { MediaCaptureView(library: library, draft: $0) }
       .confirmationDialog("Discard this draft from this device?", isPresented: Binding(get: { discarding != nil }, set: { if !$0 { discarding = nil } })) {
@@ -104,6 +106,12 @@ struct MediaDraftsView: View {
           discarding = nil
         }
       }
+  }
+  private func summary(_ draft: MediaDraft) -> String {
+    switch draft.content {
+    case .capture(let input, _): "draft: " + (input.isEmpty ? "empty capture" : String(input.prefix(60)))
+    case .edit(let edit): "change to " + edit.values.keys.sorted().joined(separator: ", ")
+    }
   }
   private func display(_ value: CoreJSONValue?) -> String {
     guard let value, value != .null else { return "Not set" }

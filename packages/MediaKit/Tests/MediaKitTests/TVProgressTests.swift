@@ -109,7 +109,8 @@ func catalogDaysRemainGregorianWithTheDeviceTimeZone(identifier: Calendar.Identi
   let source = MediaSource(
     identity: showSource, title: "Synthetic series", followed: true,
     feedSince: now.addingTimeInterval(-86400 * 3))
-  let episodes = [episode(3), episode(1, status: "Finished"), episode(2)]
+  // "s1e10" sorts before "s1e2", so identity order alone would pick the wrong episode.
+  let episodes = [episode(10), episode(1, status: "Finished"), episode(2)]
   for order in [episodes, episodes.reversed(), [episodes[1], episodes[2], episodes[0]]] {
     let card = FeedPolicy.cards(items: order, sources: [source], now: now, calendar: utc).first
     #expect(card?.nextEpisode?.episode == 2)

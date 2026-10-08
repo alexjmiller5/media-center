@@ -32,19 +32,51 @@ Replacement devices enroll again. Disconnect revokes that device's access.
 - Already-viewed pages support bounded offline browsing. Filter preferences stay
   on each device; shared saves, follows and consumption live in Life Data.
 
-No analytics or mobile notifications are included. Signed installation artifacts
-are not published yet. For development, generate the platform projects with
-XcodeGen and build `MediaCenter` from `apps/ios` or `apps/macos` using Xcode.
-Keep derived data outside cloud-synced folders.
+No analytics or mobile notifications are included.
 
-```bash
-swift test --package-path packages/MediaKit --jobs 2
-xcodegen generate --spec apps/macos/project.yml
-xcodegen generate --spec apps/ios/project.yml
+## Install
+
+**Mac.** Signed, notarized releases are published as GitHub release assets.
+Install with Homebrew (`brew install --cask <tap-owner>/tap/media-center`) or
+with Nix: add this repository as a flake input, import
+`inputs.media-center.homeModules.default` in home-manager and set
+`programs.media-center.enable = true;`. Open Media Center, enter your Life Data
+HTTPS address and approve the device in the browser.
+
+**iPhone.** Personal builds are Ad Hoc: the phone must be registered in the
+signing team and included in the app's Ad Hoc profile. The manual
+**Build iOS Ad Hoc** workflow archives, signs and verifies the app, then
+uploads only an age-encrypted IPA for one day. Keep the private age identity
+local and pass only its public recipient:
+
+```sh
+umask 077; dir=$(mktemp -d)
+age-keygen -o "$dir/identity.txt"
+gh workflow run build-ios.yml --ref main -f artifact_recipient="$(age-keygen -y "$dir/identity.txt")"
+gh run watch <run-id> --exit-status
+gh run download <run-id> -D "$dir"
+age --decrypt -i "$dir/identity.txt" -o "$dir/MediaCenter.ipa" "$dir"/ios-ad-hoc-*/App.ipa.age
+IOS_DEVICE_ID=<udid> just install "$dir/MediaCenter.ipa"   # paired Mac, same network
+just ota "$dir/MediaCenter.ipa"                            # or: tailnet install link
 ```
 
+`IOS_INSTALL_HOST=<ssh host>` installs through the Mac the phone is paired to.
+Delete `$dir` after installation. Each device then enrolls on first launch.
+
+## Development
+
+```bash
+just gen          # XcodeGen projects for apps/ios and apps/macos
+just test         # poller pytest + MediaKit model tests
+just test ios     # synthetic iPhone XCUITests (IOS_TEST_DESTINATION selects the simulator)
+just test macos   # synthetic Mac XCUITests
+just check        # ruff, workflow/signing script tests, unsigned iPhone and Mac builds
+just run ios --synthetic --test-id "$(uuidgen)"   # Debug app with isolated synthetic data
+```
+
+Keep derived data outside cloud-synced folders (`IOS_DERIVED_DATA`).
 Native CI runs both platform builds and synthetic UI interactions, including
-large-text iPhone layouts. Fixtures never enroll a personal device. The
+largest Dynamic Type iPhone layouts. Fixtures never enroll a personal device. The
 generated canonical enrollment policy is checked against its pinned Life Data
 revision; see [service contracts](tests/contracts/README.md).
 
@@ -122,14 +154,14 @@ src/core/         business logic (plain Python, portable)
 tests/            pytest
 packages/MediaKit shared native model, transport and enrollment policy
 apps/             iPhone/Mac shells, shared SwiftUI and synthetic UI tests
+nix/              signed Mac release package and home-manager module
 .env.tpl          secrets manifest (1Password op:// refs, committed)
-justfile          test / check / fmt / logs / sync-secrets / deploy / run
+justfile          gen / test / check / fmt / run / install / ota / logs / sync-secrets / deploy
 ```
 
 ## Commands
 
-`just test` / `just check` / `just fmt` / `just logs` / `just sync-secrets` /
-`just deploy` / `just run` - see AGENTS.md.
+See AGENTS.md. `just run poller` performs one ingestion on Modal.
 
 Poller releases use the GitHub deploy workflow on a main-branch service change or an
 approved manual dispatch. Verify the workflow SHA and successful completion;
@@ -141,6 +173,21 @@ not trigger poller deployment.
 ```bash
 op-project-bootstrap .env.tpl --repo <owner>/<repo>
 ```
+
+Signing CI reads shared Apple signing material, so the project CI service
+account needs read access to that signing vault as well as the project vault
+(service-account grants are fixed at creation). Native signing also needs:
+
+- repository variables `IOS_PROVISIONING_PROFILE_ID` (App Store Connect ID of
+  the app's active `IOS_APP_ADHOC` profile), `MACOS_PROVISIONING_PROFILE_ID`
+  (its `MAC_APP_DIRECT` profile, which backs the Mac Data Protection Keychain)
+  and `HOMEBREW_TAP_REPOSITORY` (`owner/repo` of the cask tap);
+- an `IOS_DEVICE_ID` field in the project ENV item for the phone the Ad Hoc
+  workflow verifies against.
+
+A Mac release is an approved `vX.Y.Z` tag push: CI signs with Developer ID,
+notarizes, publishes the zip and `SHA256SUMS`, then updates the cask. After it
+succeeds, set `version` and `hash` in `nix/package.nix` to the published asset.
 
 Then mint a hub token scoped `tables:read,tables:write` on
 `tv_episodes`, `youtube_videos`, `articles`, `provenance` and

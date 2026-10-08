@@ -80,14 +80,6 @@ import Testing
     #expect(workspace.error == nil)
   }
 
-  @Test(.serialized) func transportCancellationIsNotAnOutage() async throws {
-    let config = URLSessionConfiguration.ephemeral
-    config.protocolClasses = [StubProtocol.self]
-    let client = try HubClient(endpoint: URL(string: "https://example.test")!, token: "synthetic-device-token", configuration: config)
-    StubProtocol.install { _ in throw URLError(.cancelled) }
-    await #expect(throws: CancellationError.self) { _ = try await client.query(.init(table: "items", columns: ["id"], limit: 2)) }
-  }
-
   @Test func feedPagesAreFoundOfflineAfterTheClockMoves() async throws {
     let root = try root()
     defer { try? FileManager.default.removeItem(at: root) }

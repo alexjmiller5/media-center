@@ -19,12 +19,12 @@ struct MediaDetailView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
         adaptiveRow {
-          Text(title).font(.largeTitle.bold())
+          Text(title).font(.largeTitle.bold()).accessibilityIdentifier("detail.title")
           if !textSize.isAccessibilitySize { Spacer() }
           Button("Done") { dismiss() }
         }
         if let item = library.records[identity]?.item {
-          Text(item.status).foregroundStyle(.secondary)
+          Text(item.status).foregroundStyle(.secondary).accessibilityIdentifier("media.status")
           if let duration = item.durationMinutes { Text("\(Int(duration.rounded())) minutes").foregroundStyle(.secondary) }
           adaptiveRow {
             if let url = item.url {
@@ -66,6 +66,7 @@ struct MediaDetailView: View {
                 if !textSize.isAccessibilitySize { Spacer() }
                 if season > 0 {
                   Button("Mark aired episodes finished") { seasonSelection = .init(season: season, episodes: library.airedEpisodes(season: season, showID: identity.id)) }
+                    .accessibilityLabel("Mark aired episodes in \(season == 0 ? "Specials" : "Season \(season)") finished")
                     .accessibilityIdentifier("season.\(season).finish")
                     .disabled(!library.episodesComplete || library.airedEpisodes(season: season, showID: identity.id).isEmpty || changing)
                 }
@@ -76,6 +77,7 @@ struct MediaDetailView: View {
                   if !textSize.isAccessibilitySize { Spacer() }
                   if library.canEdit(episode.identity, role: "status"), let binding = library.connection.bindings.items[MediaKind.tvEpisode.rawValue] {
                     Menu("Status") { ForEach(binding.statuses.keys.sorted(), id: \.self) { status in Button(status) { Task { await library.setConsumption(episode.identity, status: status, date: consumptionDate) } } } }
+                      .accessibilityLabel("Status for \(episode.title)")
                   }
                 }.padding(.vertical, 8)
               }
@@ -84,17 +86,23 @@ struct MediaDetailView: View {
           if !library.episodesComplete { Text("Episode list is incomplete. Bulk changes are unavailable.").foregroundStyle(.secondary) }
           if !library.bulkResults.isEmpty {
             Text("\(library.bulkResults.filter(\.committed).count) of \(library.bulkResults.count) updated").font(.headline)
-            ForEach(library.bulkResults.filter { !$0.committed }) { result in Text("Could not update \(result.title)").foregroundStyle(.red) }
+            ForEach(library.bulkResults.filter { !$0.committed }) { result in Text("Could not update \(result.title)").foregroundStyle(.errorText) }
           }
         }
-        if let message = library.message { Text(message).foregroundStyle(.red) }
+        if let message = library.message { Text(message).foregroundStyle(.errorText) }
         #if DEBUG
-        if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeCount)").font(.caption).accessibilityIdentifier("fixture.writes") }
+        if let synthetic = model.synthetic { Text("Writes: \(synthetic.writeAttempts)").font(.caption).accessibilityIdentifier("fixture.writes") }
         #endif
       }.padding(28)
     }.frame(minWidth: 320, idealWidth: 620, minHeight: 400)
       .task(id: identity) { await library.loadDetail(identity); if identity.kind == .tvShow { await library.loadEpisodes(showID: identity.id) } }
       .onChange(of: scenePhase) { _, phase in if phase == .active && openedExternal { openedExternal = false; showReview = true } }
+      #if os(macOS)
+      // Switching apps does not change scenePhase on the Mac; returning activates the app.
+      .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+        if openedExternal { openedExternal = false; showReview = true }
+      }
+      #endif
       .sheet(isPresented: $showFields) { MediaUserFieldsView(library: library, identity: identity) }
       .sheet(isPresented: $showReview) { review }
       .sheet(item: $seasonSelection) { selection in seasonPreview(selection.episodes) }

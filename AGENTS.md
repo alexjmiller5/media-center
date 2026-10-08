@@ -189,14 +189,16 @@ not a script catalog; one-offs go in `scripts/` and run directly.
 
 | Command | Purpose |
 |---|---|
-| `just test` / `just check` / `just fmt` | pytest / ruff read-only / ruff fix |
-| `just logs` | Stream deployed-app logs via the installed `modal` command |
-| `just sync-secrets` | Push `.env.tpl` → Modal secret store |
-| `just deploy` | test + sync-secrets + `modal deploy` |
-| `just run` | One ingestion run on Modal, on demand (`modal run app.py`) |
+| `just gen` | XcodeGen for `apps/ios` and `apps/macos` |
+| `just test` | pytest + MediaKit `swift test`; `just test ios` / `just test macos` run that app's synthetic XCUITests |
+| `just check` / `just fmt` | ruff, signing/workflow script tests, unsigned iPhone Simulator and Mac builds / ruff fix |
+| `just run [ios\|macos\|poller] [args]` | Debug app on a simulator or the Mac (`--synthetic --test-id <uuid>` for isolated fixtures), or one ingestion on Modal |
+| `just install <ipa>` / `just ota <ipa>` | Install a verified Ad Hoc IPA on `IOS_DEVICE_ID` (optionally via `IOS_INSTALL_HOST`) / serve a tailnet install page |
+| `just logs` / `just sync-secrets` / `just deploy` | Poller logs / push `.env.tpl` into Modal / fallback poller deploy |
 
-`run` and `logs` call bare `modal` so the installed authentication wrapper
-is used; `uv run modal` bypasses it.
+`run poller` and `logs` call bare `modal` so the installed authentication wrapper
+is used; `uv run modal` bypasses it. Derived data defaults to
+`~/Library/Developer/Xcode/DerivedData/MediaCenter` (`IOS_DERIVED_DATA`).
 
 ## TDD
 
@@ -234,6 +236,31 @@ remote browser session and approve the displayed code. Both verified fields
 are saved together in the project vault through JSON stdin; no plaintext
 credential cache is written. Individual Modal field minting is refused.
 
+## Native delivery
+
+- iPhone: manual `build-ios.yml` (workflow_dispatch, public age recipient input).
+  It downloads the app's `IOS_APP_ADHOC` profile by repository variable
+  `IOS_PROVISIONING_PROFILE_ID` through the App Store Connect API, checks the
+  `IOS_DEVICE_ID` ENV field against it, signs in a temporary keychain
+  (`scripts/sign-ios.py`), verifies the run-stamped build and uploads only the
+  age-encrypted IPA for one day. Install with `just install` or `just ota`.
+- Mac: `release-macos.yml` runs only for stable `vX.Y.Z` tags. It downloads the
+  app-owned `MAC_APP_DIRECT` profile (`MACOS_PROVISIONING_PROFILE_ID`), archives
+  a universal Release with `Signing/MediaCenter.entitlements` (application
+  identifier for the Data Protection Keychain; Debug/test builds stay ad hoc and
+  omit it), exports with Developer ID, verifies both architectures
+  (`scripts/verify-macos-signing.py`), notarizes, staples, then publishes the
+  zip plus `SHA256SUMS`. A separate job updates the cask in
+  `HOMEBREW_TAP_REPOSITORY` via checkout credentials, never a token URL. The
+  signing job restores the runner's keychain search list in an `always()` step.
+- Signing CI reads the documented shared Apple Signing vault exception (P12s,
+  ASC key, tap token) through the project CI service account; the apps never
+  receive these credentials. CI never creates certificates or profiles.
+- `flake.nix` exports `packages.<darwin>.media-center` (the published zip,
+  unmodified) and `homeModules.default` (`programs.media-center.enable`).
+  `nix/package.nix` pins the latest release's version and hash.
+- Ordinary changes never bump `MARKETING_VERSION` or push a release tag.
+
 ## Native domain library
 
 `packages/MediaKit` is a dependency-free Swift package for iOS 17+ and macOS 14+.
@@ -249,14 +276,22 @@ Native policy and codecs are generated from a pinned Life Data revision with
 verify reproducibility; do not edit files under `Generated/` or the policy JS.
 The JSC adapter calls canonical policy without importing replica or SQL code.
 Content cache is bounded to 50 pages/50 MiB, partitioned by endpoint, profile
-revision and credential fingerprint. Drafts live separately and are never
-automatically submitted or erased on disconnect. Write receipts and readback
+revision and credential fingerprint. Drafts live separately, keyed by endpoint
+and enrollment profile so they survive revision changes and re-enrollment; they
+are never automatically submitted or erased on disconnect. A confirmed edit or
+saved capture removes its draft; conflicting, uncertain or refused ones stay. Write receipts and readback
 control success; uncertain or conflicting patches cannot be silently replayed.
 Enrollment uses the `media-center` service profile and configuration namespace.
 Installation-specific table/field/status mappings and duration units come from
 that profile. Canonical policy rejects broad grants, and native binding checks
-reject grants to unrelated fields. Reconnect checks the stored exact scope set
-and profile revision. Cancelled or expired candidates remain in Keychain only
+reject grants to unrelated fields. Status mappings must equal the catalog's
+status options exactly. Reconnect checks the stored exact scope set
+and profile revision. One device credential is active per installation: a new
+enrollment revokes earlier ones, and a credential that can no longer connect is
+revoked (or dropped once the service answers 401). A failed read during a session
+switches to cached pages; the next successful read on the validated session ends
+the outage, while snapshot browsing revalidates through "Try again". Cancelled
+reads never count as outages. Cancelled or expired candidates remain in Keychain only
 for revocation retries until the hub confirms revocation; they cannot connect.
 Nonsecret connection snapshots allow previously viewed offline pages without
 enabling writes or recovering drafts until session revalidation succeeds.
