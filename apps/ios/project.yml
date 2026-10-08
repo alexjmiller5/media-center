@@ -40,6 +40,8 @@ targets:
     info:
       path: App/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
   MediaCenterUITests:
