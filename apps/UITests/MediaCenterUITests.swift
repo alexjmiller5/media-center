@@ -195,6 +195,14 @@ import XCTest
     XCTAssertEqual(writes, "Writes: 0")
     XCTAssertEqual(text("media.status"), "Unseen")
   }
+  func testOfflineCopyDownloadsThenPlaysWithoutWriting() {
+    press("item.youtubeVideo.video-one")
+    snapshot("offline-available")
+    press("media.offline.download")
+    XCTAssertTrue(ui.buttons["media.offline.play"].waitForExistence(timeout: 10))
+    snapshot("offline-ready")
+    XCTAssertEqual(writes, "Writes: 0")
+  }
   func testReadOnlySourceFactsHaveNoEditors() {
     press("item.youtubeVideo.video-one")
     XCTAssertTrue(ui.buttons["media.save"].waitForExistence(timeout: 10))

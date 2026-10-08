@@ -9,7 +9,10 @@ import Observation
   var endpoint = ""
   var starting = false
   let workspace: MediaWorkspace
+  /// Offline video copies for the validated hub connection; nil without one.
+  var offlineVideos: (any OfflineVideoStore)?
   private let snapshots: ConnectionSnapshotStore
+  private let storageRoot: URL
   #if DEBUG
   var synthetic: SyntheticMediaService?
   #endif
@@ -24,6 +27,7 @@ import Observation
     #endif
     workspace = MediaWorkspace(drafts: DraftStore(directory: root.appendingPathComponent("Drafts")), cache: MediaCache(directory: root.appendingPathComponent("Cache")))
     snapshots = ConnectionSnapshotStore(directory: root.appendingPathComponent("Connections"))
+    storageRoot = root
     #if DEBUG
     if args.contains("--synthetic") {
       do {
@@ -45,6 +49,9 @@ import Observation
     if let synthetic {
       do {
         try await workspace.connect(identity: synthetic.connection.identity, service: synthetic)
+        offlineVideos = OfflineVideoCache(directory: storageRoot.appendingPathComponent("Offline")) {
+          try await synthetic.retainedFile(key: $0)
+        }
         library = MediaLibrary(connection: synthetic.connection, workspace: workspace, now: synthetic.now, calendar: ProcessInfo.processInfo.arguments.contains("--buddhist-calendar") ? Calendar(identifier: .buddhist) : .current)
         if ProcessInfo.processInfo.arguments.contains("--offline") {
           // Offline launch: the cached snapshot path, with no validated service.
@@ -103,6 +110,11 @@ import Observation
   private func attach() async throws {
     guard let connection = enrollment?.connection, let service = enrollment?.transport else { return }
     try await workspace.connect(identity: connection.identity, service: service)
+    if let hub = service as? HubClient {
+      offlineVideos = OfflineVideoCache(directory: storageRoot.appendingPathComponent("Offline")) {
+        try await hub.downloadFile(key: $0)
+      }
+    }
     try? await snapshots.save(connection)
     library = MediaLibrary(connection: connection, workspace: workspace, defaults: .standard)
     await library?.refresh()
@@ -111,7 +123,7 @@ import Observation
     let wasStarting = starting
     starting = true; defer { starting = wasStarting }
     let identity = library?.connection.identity
-    library = nil; workspace.disconnect()
+    library = nil; offlineVideos = nil; workspace.disconnect()
     await enrollment?.disconnect()
     if let identity { try? await snapshots.remove(identity: identity) }
   }

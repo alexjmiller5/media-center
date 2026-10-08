@@ -96,6 +96,7 @@ public struct MediaBindings: Codable, Equatable, Sendable {
       "release": date, "consumedAt": date, "duration": ["int", "number", "float"],
       "season": ["int"], "episode": ["int"], "isShort": ["bool"], "sourceID": text.union(["ref"]),
       "url": text, "imageURL": text, "tags": ["multi_select"], "note": text,
+      "offlineFile": ["json"],
     ]
     for (field, column) in binding.fields {
       guard scopes.contains("tables:read:\(binding.table):\(column)"),

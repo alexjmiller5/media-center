@@ -122,6 +122,41 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
     { throw mutation ? HubError.uncertain : HubError.invalidReply }
   }
   public func sessionData() async throws -> CoreRow { try await request("v1/session") }
+  /// Downloads one retained file (`files:read:<prefix>/`) to a temporary file the caller owns.
+  public func downloadFile(key: String) async throws -> URL {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.httpShouldSetCookies = false
+    configuration.httpCookieStorage = nil
+    configuration.urlCache = nil
+    configuration.timeoutIntervalForRequest = 60
+    configuration.timeoutIntervalForResource = 3600
+    let files = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
+    defer { files.finishTasksAndInvalidate() }
+    var request = URLRequest(url: endpoint.appendingPathComponent("v1/files/\(key)"))
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    let temporary: URL
+    let response: URLResponse
+    do { (temporary, response) = try await files.download(for: request) } catch {
+      if error is CancellationError || (error as? URLError)?.code == .cancelled {
+        throw CancellationError()
+      }
+      throw HubError.unavailable
+    }
+    let owned = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    do {
+      switch (response as? HTTPURLResponse)?.statusCode {
+      case 200: try FileManager.default.moveItem(at: temporary, to: owned)
+      case 401: throw HubError.revoked
+      case 403: throw HubError.forbidden
+      case .some(let status) where (400...499).contains(status): throw HubError.rejected(status)
+      default: throw HubError.unavailable
+      }
+    } catch {
+      try? FileManager.default.removeItem(at: temporary)
+      throw error
+    }
+    return owned
+  }
   public func consumerConfig() async throws -> CoreConsumerConfigReply {
     let reply: CoreConsumerConfigReply = try await request("v1/consumer/config")
     let _: CoreConsumerConfig = try policy.invoke("canonicalConsumerConfig", reply.config)

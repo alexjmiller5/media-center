@@ -1,4 +1,5 @@
 #if DEBUG
+import CryptoKit
 import Foundation
 import Observation
 
@@ -19,7 +20,7 @@ import Observation
     let statuses: [String: ConsumptionState] = ["Unseen": .notStarted, "Next": .priority, "Watching": .inProgress, "Finished": .finished, "Abandoned": .gaveUp, "Some watched": .watchedParts]
     let common = ["id":"id", "title":"heading", "status":"state", "saved":"kept", "updatedAt":"updated_at", "hubAt":"hub_at", "deletedAt":"deleted_at", "release":"released", "url":"link", "consumedAt":"completed", "note":"notes", "tags":"labels"]
     var articles = common; articles["sourceID"] = "parent"
-    var videos = articles; videos["duration"] = "seconds"; videos["isShort"] = "short"
+    var videos = articles; videos["duration"] = "seconds"; videos["isShort"] = "short"; videos["offlineFile"] = "offline_copy"
     var episodes = articles; episodes["season"] = "season"; episodes["episode"] = "number"; episodes["duration"] = "minutes"
     let source = ["id":"id", "title":"heading", "follow":"followed", "feedSince":"since", "updatedAt":"updated_at", "hubAt":"hub_at", "deletedAt":"deleted_at"]
     let bindings = MediaBindings(items: [
@@ -43,6 +44,7 @@ import Observation
         case "sourceID": type = "ref"
         case "tags": type = "multi_select"
         case "season", "episode", "duration": type = "int"
+        case "offlineFile": type = "json"
         case "consumedAt": type = "date"
         case "release": type = ["series", "episodes"].contains(binding.table) ? "date" : "datetime"
         case "updatedAt", "hubAt", "deletedAt", "feedSince": type = "datetime"
@@ -71,6 +73,7 @@ import Observation
     tables["reads"] = [row("article-one", "The quiet city", saved: true, parent: "publisher-one"), row("article-history", "A finished story", days: -10, status: "Finished", parent: "publisher-one")]
     var video = row("video-one", "How a coastline changes", parent: "channel-one")
     video["seconds"] = .number(840); video["short"] = .bool(false)
+    video["offline_copy"] = .string(String(decoding: try JSONEncoder().encode([Self.offlinePart]), as: UTF8.self))
     tables["videos"] = [video]
     var show = row("show-one", "North Shore", days: -100, status: "Finished")
     show["released"] = .string(FeedQueryPlan.day(now.addingTimeInterval(-100 * 86400), calendar: .current))
@@ -136,6 +139,20 @@ import Observation
   }
   public func captureReceipt(id: String) async throws -> CaptureReceipt { captures[id] ?? .init(requestId: id, state: "uncertain") }
   public func close() {}
+  /// One synthetic retained part standing in for an offline video copy.
+  public static let offlineBytes = Data("synthetic offline video copy".utf8)
+  static var offlinePart: OfflinePart {
+    let sha = SHA256.hash(data: offlineBytes).map { String(format: "%02x", $0) }.joined()
+    return OfflinePart(key: "youtube/video-one/\(sha)", bytes: offlineBytes.count, sha256: sha)
+  }
+  /// The synthetic files API: hands over a temporary copy of a published part.
+  public func retainedFile(key: String) async throws -> URL {
+    if offline { throw HubError.unavailable }
+    guard key == Self.offlinePart.key else { throw HubError.rejected(404) }
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try Self.offlineBytes.write(to: url)
+    return url
+  }
   private func compare(_ lhs: CoreJSONValue, _ rhs: CoreJSONValue) -> Bool {
     if case .number(let l) = lhs, case .number(let r) = rhs { return l < r }
     if case .string(let l) = lhs, case .string(let r) = rhs { return l.utf8.lexicographicallyPrecedes(r.utf8) }

@@ -261,6 +261,19 @@ vault. Tests use an in-process fake hub and a fake yt-dlp (`just test` in the
 job directory; CI `youtube-offline.yml`). The job writes no other column and
 never touches the poller's tables.
 
+Native playback: `packages/MediaKit/Sources/MediaKit/OfflineVideo.swift` parses
+`offline_file` (only content-addressed `youtube/<id>/<sha256>` parts of that
+video), and `OfflineVideoCache` (behind `OfflineVideoStore`) downloads each part
+through `HubClient.downloadFile` (`files:read:youtube/`), verifies size and
+SHA-256, and joins them into `Application Support/MediaCenter/Offline`.
+`apps/Shared/OfflineVideoView.swift` shows Download / Play offline on a YouTube
+detail when the connection binds the `offlineFile` role to a `json` column. The
+`media-center` enrollment profile must carry `tables:read`/`catalog:read` for
+`youtube_videos.offline_file`, `files:read:youtube/` and the `offlineFile`
+binding before release clients see it; until then the controls stay hidden.
+Debug synthetic data publishes one offline part; the UI test
+`testOfflineCopyDownloadsThenPlaysWithoutWriting` covers the flow.
+
 ## Native delivery
 
 - iPhone: manual `build-ios.yml` (workflow_dispatch, public age recipient input).

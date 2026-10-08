@@ -37,6 +37,12 @@ struct MediaDetailView: View {
                 #endif
               }.buttonStyle(.borderedProminent).accessibilityIdentifier("media.open")
             }
+            if let store = model.offlineVideos, let record = library.records[identity],
+              let binding = library.connection.bindings.items[identity.kind.rawValue],
+              let parts = record.offlineParts(binding: binding)
+            {
+              OfflineVideoView(store: store, videoID: identity.id, parts: parts)
+            }
             if library.canEdit(identity, role: "saved") {
               Button(item.saved ? "Unsave" : "Save") { Task { changing = true; await library.edit(identity, role: "saved", value: .bool(!item.saved)); changing = false } }
                 .buttonStyle(.bordered).accessibilityIdentifier("media.save").disabled(changing)
