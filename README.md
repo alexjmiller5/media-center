@@ -189,12 +189,14 @@ A Mac release is an approved `vX.Y.Z` tag push: CI signs with Developer ID,
 notarizes, publishes the zip and `SHA256SUMS`, then updates the cask. After it
 succeeds, set `version` and `hash` in `nix/package.nix` to the published asset.
 
-Then mint a hub token scoped `tables:read,tables:write` on
-`tv_episodes`, `youtube_videos`, `articles`, `provenance` and
-`youtube_channels` (a `tables:write`-only token cannot pull), plus read on
-`tv_shows` and `feeds`, and put it in the
+Then enroll the poller with a Life Data profile granting broad `tables:read`
+and `tables:write` (`life login --profile <id> --name "Media Center poller"
+--start pending.json`, approve the printed URL, then
+`life login --claim pending.json --wait`) and put the printed token in the
 `LIFE_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
-`LIFE_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`.
+`LIFE_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`. Per-table grants cannot
+replace the broad pair: the poller reads and inserts `provenance` edges, and
+`provenance` is a reserved table no table-scoped grant can name.
 
 Other one-time steps that cannot be codified:
 
@@ -203,7 +205,8 @@ Other one-time steps that cannot be codified:
 ## Bring your own hub
 
 This service is agnostic to which life-data hub it talks to - any endpoint
-implementing `/v1/rows/pull`, `/v1/rows/insert` and `/v1/rows/push` (see `src/core/hub.py`)
+implementing `/v1/rows/pull`, `/v1/rows/insert`, `/v1/rows/push` and
+`/v1/rows/patch` (see `src/core/hub.py`)
 works, as long as it has these tables:
 
 | Table | Role |

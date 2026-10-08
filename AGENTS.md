@@ -63,7 +63,7 @@ There is no analytics SDK or mobile notification permission.
 | Var | Purpose |
 |---|---|
 | `LIFE_HUB_URL` | Base URL of the life-data hub API |
-| `LIFE_HUB_TOKEN` | Bearer token, scoped `tables:read,tables:write` on the tables below (a write-only token cannot pull) |
+| `LIFE_HUB_TOKEN` | The poller's own Life Data token, enrolled with a profile granting broad `tables:read` and `tables:write`: it reads and inserts `provenance`, a reserved table no table-scoped grant can name |
 | `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) - account-level key, shared with the derivations project since TMDB issues only one v3 key per account |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) |
 
@@ -72,14 +72,14 @@ There is no analytics SDK or mobile notification permission.
 | Module | Purpose |
 |---|---|
 | `core/config.py` | `Settings` - the four env vars above |
-| `core/hub.py` | `HubClient` (`pull`/`insert`/`push` against the life-data hub), `imported_from` (provenance edge), `now_iso` |
+| `core/hub.py` | `HubClient` (`pull`/`insert`/`push`/revision-checked `patch` against the life-data hub), `imported_from` (provenance edge), `now_iso` |
 | `core/tmdb.py` | TMDB show/season lookups -> `tv_episodes` rows |
 | `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows |
 | `core/feeds.py` | RSS, link scraping, Bluesky and Chrome dispatch -> `articles` rows |
 | `core/bluesky.py` | Public author-feed pagination, DID-based post IDs and original content |
 | `core/chrome.py` | Chrome What's New archive consumer feature cards, provider IDs and original instructions |
 | `core/watcher.py` | `Entry` + `parse_feed` (feedparser wrapper), shared by `feeds.py` |
-| `core/pipeline.py` | `sync_tv`, `sync_youtube`, `sync_feeds`, `run_daily` - wires the above into one ingestion pass |
+| `core/pipeline.py` | `sync_feed_boundaries`, `sync_tv`, `sync_youtube`, `sync_feeds`, `run_daily` - wires the above into one ingestion pass |
 
 ## Rules the poller follows
 
@@ -212,6 +212,12 @@ follow/tracking lists) and writes `tv_episodes`, `youtube_videos`,
 `articles` and `provenance`, plus the one flag it owns on a follow list:
 `youtube_channels.backfilled` - pushed as a partial row (`{id, backfilled,
 updated_at}`), since the hub checks required columns against the merged row.
+It also starts `feed_since` on a followed source that has none (the feed
+boundary a follow action normally sets) with one revision-checked
+`POST /v1/rows/patch` per source; a 409 means another writer edited the source
+since the read, and the next run re-reads it. It never touches a set boundary,
+an unfollowed source or an item's `saved`; new items get `saved` from its
+catalog default.
 All new items and provenance edges use `POST /v1/rows/insert`, with the same
 `{table, columns, rows}` request envelope as push and an
 `{inserted: [ids], existing: [ids], rejected: [...]}` response. Existing IDs
