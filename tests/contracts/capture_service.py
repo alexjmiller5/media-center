@@ -17,7 +17,7 @@ issued = capture_clients.issue_gateway(
 ws = workspace.build(
     "fixture",
     {"databases": {"articles": {"saved_column": "saved"}}},
-    secrets={"life_hub_url": sys.argv[1], "life_hub_token": "synthetic-writer"},
+    secrets={"soma_hub_url": sys.argv[1], "soma_hub_token": "synthetic-writer"},
 )
 media_resolution.classify = lambda text: "tasks" if text == "make a task" else "articles"
 failed_inputs = set()

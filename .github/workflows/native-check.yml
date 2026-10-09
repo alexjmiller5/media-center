@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
-          repository: alexjmiller5/life-data
+          repository: alexjmiller5/soma
           ref: ed7d7057b3dd11d009599db0ad1b340adf66e070
           path: .policy-source
       - uses: oven-sh/setup-bun@v2

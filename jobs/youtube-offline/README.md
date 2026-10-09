@@ -1,7 +1,7 @@
 # YouTube offline job
 
-Keeps requested YouTube videos as checksummed offline copies in a Life Data hub.
-A user sets `youtube_videos.offline_requested = 1` (Life UI or Media Center); this
+Keeps requested YouTube videos as checksummed offline copies in a Soma hub.
+A user sets `youtube_videos.offline_requested = 1` (Iris or Media Center); this
 job, running on an always-on Mac, downloads the video with yt-dlp (H.264 mp4 at
 <= 720p by default), uploads it through the hub files API and writes the result
 back on the row. Clients then download the copy into their own cache.
@@ -53,7 +53,7 @@ download spool and `youtube-offline.log` live in
 
 ## Service setup (once per hub)
 
-1. Catalog the five columns above on `youtube_videos` (Life Data catalog).
+1. Catalog the five columns above on `youtube_videos` (Soma catalog).
 2. Create the subscription as the hub operator:
    `POST /v1/subscriptions {"label": "Media Center YouTube Offline", "sources": [{"table": "youtube_videos", "columns": ["offline_requested"]}], "start": "now"}`.
 3. Give the job its own credential with exactly these grants:

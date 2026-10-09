@@ -2,7 +2,7 @@
 
 Media Center: native iPhone and Mac clients plus a daily poller that ingests TV episodes (TMDB), YouTube
 uploads (YouTube Data API) and articles (RSS, link scraping, public Bluesky
-and Chrome consumer feature updates) into a Life Data hub.
+and Chrome consumer feature updates) into a Soma hub.
 The Python service runs on Modal as a single cron job.
 `packages/MediaKit` contains native client models, feed rules, scoped HTTP
 transport, canonical enrollment policy, bounded content cache and draft state.
@@ -11,7 +11,7 @@ Device enrollment uses browser approval and a device-local Keychain credential.
 contains SwiftUI navigation, enrollment, feed/library/history, direct capture,
 source follows and explicit consumption controls. Synthetic launch data is
 Debug-only and uses an isolated test directory. Release clients obtain role
-bindings, catalog metadata and status choices through their scoped Life Data
+bindings, catalog metadata and status choices through their scoped Soma
 consumer connection. They never hold poller or operator credentials.
 
 ## Architecture rule (the one that matters)
@@ -39,7 +39,7 @@ JavaScriptCore, with no external Swift dependencies. Application Support
 holds bounded content pages, validated nonsecret connection snapshots and
 independent unsent drafts. Browser approval enrolls one revocable device
 credential; replacement devices enroll again. Consumer field edits use
-revision-checked sparse patches. Capture submission uses the Life Data
+revision-checked sparse patches. Capture submission uses the Soma
 adapter and displays Saved only after its resolved saved receipt.
 Catalog-permitted notes, tags and consumption dates are edited through explicit
 revision-checked patches. Feed filters persist in device-local defaults, scoped
@@ -62,8 +62,8 @@ There is no analytics SDK or mobile notification permission.
 
 | Var | Purpose |
 |---|---|
-| `LIFE_HUB_URL` | Base URL of the life-data hub API |
-| `LIFE_HUB_TOKEN` | The poller's own Life Data token, enrolled with a profile granting broad `tables:read` and `tables:write`: it reads and inserts `provenance`, a reserved table no table-scoped grant can name |
+| `SOMA_HUB_URL` | Base URL of the soma hub API |
+| `SOMA_HUB_TOKEN` | The poller's own Soma token, enrolled with a profile granting broad `tables:read` and `tables:write`: it reads and inserts `provenance`, a reserved table no table-scoped grant can name |
 | `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) - account-level key, shared with the derivations project since TMDB issues only one v3 key per account |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) |
 
@@ -72,7 +72,7 @@ There is no analytics SDK or mobile notification permission.
 | Module | Purpose |
 |---|---|
 | `core/config.py` | `Settings` - the four env vars above |
-| `core/hub.py` | `HubClient` (`pull`/`insert`/`push`/revision-checked `patch` against the life-data hub), `imported_from` (provenance edge), `now_iso` |
+| `core/hub.py` | `HubClient` (`pull`/`insert`/`push`/revision-checked `patch` against the soma hub), `imported_from` (provenance edge), `now_iso` |
 | `core/tmdb.py` | TMDB show/season lookups -> `tv_episodes` rows |
 | `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows |
 | `core/feeds.py` | RSS, link scraping, Bluesky and Chrome dispatch -> `articles` rows |
@@ -205,7 +205,7 @@ is used; `uv run modal` bypasses it. Derived data defaults to
 Write the test in `tests/` first, then the `src/core/` code. `app.py` shim
 functions stay thin enough to not need tests.
 
-## life-data tables
+## soma tables
 
 This service reads `tv_shows`, `youtube_channels` and `feeds` (the
 follow/tracking lists) and writes `tv_episodes`, `youtube_videos`,
@@ -227,12 +227,12 @@ Bluesky ingestion requires `bluesky` options on `feeds.fetch` and
 `feeds.kind`, plus optional JSON `articles.content` owned by the poller.
 Chrome ingestion requires `chrome` on `feeds.fetch` and the same optional
 JSON `articles.content` field.
-Provision these catalog properties through the installed Life interface
+Provision these catalog properties through the installed Soma interface
 before activating a source.
 Provenance reconciliation additionally reads `provenance` IDs and live
 item parent relationships, using the same hub pull endpoint and scoped token.
 Table schemas and conventions are documented in
-the `life-map` skill - read it before adding a column or a new source table.
+the `soma-map` skill - read it before adding a column or a new source table.
 
 ## Credential provisioning
 
@@ -248,7 +248,7 @@ credential cache is written. Individual Modal field minting is refused.
 (`github:alexjmiller5/media-center?dir=jobs/youtube-offline`): package plus
 `darwinModules.default` (`services.media-center.youtube-offline`), installed on
 the mac mini as a kept-alive launchd user agent. It follows the mini-job
-template's outbound long-poll architecture: it consumes a Life Data
+template's outbound long-poll architecture: it consumes a Soma
 `durable-pull-v1` subscription on `youtube_videos.offline_requested`, treats
 events as wake-ups, reconciles from the rows (also at startup), and ACKs a batch
 only after its pass succeeds. For each requested row that is not `ready` it
@@ -262,7 +262,7 @@ each attempt and reset when the request toggles. A storage cap refuses new
 downloads with `storage_full`; retained files cannot be deleted through the hub,
 so every `ready` row counts. Its credential is its own (grants in the job
 README), read from the mini's login Keychain via `credentialCommand`; the
-operator copy is `Media Center YouTube Offline Life Data Token` in the project
+operator copy is `Media Center YouTube Offline Soma Token` in the project
 vault. Tests use an in-process fake hub and a fake yt-dlp (`just test` in the
 job directory; CI `youtube-offline.yml`). The job writes no other column and
 never touches the poller's tables.
@@ -315,8 +315,8 @@ Run `swift test --package-path packages/MediaKit --jobs 2` with a private
 Cross-service capture checks and their explicit dependency paths are documented
 in `tests/contracts/README.md`; they run entirely against temporary synthetic state.
 
-Native policy and codecs are generated from a pinned Life Data revision with
-`bun scripts/build-enrollment-policy.ts <life-data-checkout>`. Add `--check` to
+Native policy and codecs are generated from a pinned Soma revision with
+`bun scripts/build-enrollment-policy.ts <soma-checkout>`. Add `--check` to
 verify reproducibility; do not edit files under `Generated/` or the policy JS.
 The JSC adapter calls canonical policy without importing replica or SQL code.
 Content cache is bounded to 50 pages/50 MiB, partitioned by endpoint, profile

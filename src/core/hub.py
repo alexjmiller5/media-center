@@ -1,4 +1,4 @@
-"""life-data hub client - the one place media-center reads and writes rows.
+"""soma hub client - the one place media-center reads and writes rows.
 
 Pull whole tables (`/v1/rows/pull`), atomically create missing rows
 (`/v1/rows/insert`), update only owned columns (`/v1/rows/push`), and make

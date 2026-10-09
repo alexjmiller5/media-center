@@ -11,10 +11,10 @@ struct MediaCenterRoot: View {
         VStack(alignment: .leading, spacing: 20) {
           Text("Media Center").font(.largeTitle.bold())
           Text("A place for what you want to read and watch.").foregroundStyle(.secondary)
-          Text("Connect to Life Data").font(.title2.bold())
+          Text("Connect to Soma").font(.title2.bold())
           TextField("HTTPS service address", text: $model.endpoint).textFieldStyle(.roundedBorder).accessibilityIdentifier("enroll.endpoint")
           if let approval = model.enrollment?.approval {
-            Text("Approve this device in Life Data. Verify the code:")
+            Text("Approve this device in Soma. Verify the code:")
             Text(approval.code).font(.title.monospaced()).textSelection(.enabled)
             Button("Open approval") { openURL(approval.url) }
             Button("Cancel") { Task { await model.disconnect() } }
@@ -23,7 +23,7 @@ struct MediaCenterRoot: View {
           }
           if let error = model.error { Text(error).foregroundStyle(.errorText) }
           if model.enrollment?.state == .expired { Text("Approval expired. Connect again to request a new code.") }
-          if model.enrollment?.state == .failed { Text("Life Data refused this device, or its media configuration is invalid. Nothing was connected; check the service setup, then connect again.").foregroundStyle(.errorText) }
+          if model.enrollment?.state == .failed { Text("Soma refused this device, or its media configuration is invalid. Nothing was connected; check the service setup, then connect again.").foregroundStyle(.errorText) }
           if model.enrollment?.cleanupPending == true { Text("A previous device request still needs revocation. Reconnect when the service is available.").foregroundStyle(.secondary) }
           if model.starting { ProgressView() }
         }.padding(32).frame(maxWidth: 480)
@@ -264,7 +264,7 @@ struct FeedFiltersView: View {
             Toggle(kindLabel(kind), isOn: Binding(get: { library.preferences.kinds.contains(kind) }, set: { value in
               if value { library.preferences.kinds.insert(kind) } else { library.preferences.kinds.remove(kind) }
             })).disabled(!configured).accessibilityIdentifier("filter.\(kind.rawValue)")
-            if !configured { Text("\(kindLabel(kind)) is not configured in Life Data").font(.footnote).foregroundStyle(.secondary) }
+            if !configured { Text("\(kindLabel(kind)) is not configured in Soma").font(.footnote).foregroundStyle(.secondary) }
           }
           Text("No selection includes every type.").font(.footnote).foregroundStyle(.secondary)
           Toggle("Include Shorts", isOn: $library.preferences.includeShorts)

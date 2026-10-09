@@ -1,4 +1,4 @@
-"""Life Data hub client: durable-pull-v1 subscription, projected row pulls,
+"""Soma hub client: durable-pull-v1 subscription, projected row pulls,
 revision-checked patches and immutable checksummed files."""
 
 from collections.abc import Callable

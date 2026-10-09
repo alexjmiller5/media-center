@@ -1,5 +1,5 @@
 {
-  description = "Media Center YouTube offline job: keeps requested videos as offline copies in a Life Data hub (mac mini, outbound long poll)";
+  description = "Media Center YouTube offline job: keeps requested videos as offline copies in a Soma hub (mac mini, outbound long poll)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

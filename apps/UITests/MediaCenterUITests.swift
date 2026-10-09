@@ -155,7 +155,7 @@ import XCTest
     #endif
     XCTAssertTrue(movie.waitForExistence(timeout: 10))
     XCTAssertFalse(movie.isEnabled)
-    XCTAssertTrue(ui.staticTexts["Film is not configured in Life Data"].exists)
+    XCTAssertTrue(ui.staticTexts["Film is not configured in Soma"].exists)
   }
   func testLibrarySearchIncludesSourceTitlesWithoutWriting() {
     press("nav.library")

@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    life_hub_url: str
-    life_hub_token: str
+    soma_hub_url: str
+    soma_hub_token: str
     tmdb_api_key: str
     youtube_api_key: str

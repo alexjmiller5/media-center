@@ -1,4 +1,4 @@
-"""In-process fake of the Life Data hub routes the job uses (durable-pull-v1,
+"""In-process fake of the Soma hub routes the job uses (durable-pull-v1,
 projected pull, revision-checked patch, immutable checksummed files)."""
 
 import hashlib

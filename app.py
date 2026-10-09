@@ -28,7 +28,7 @@ def _run() -> dict:
     from core.pipeline import run_daily
 
     settings = Settings()
-    hub = HubClient(settings.life_hub_url, settings.life_hub_token)
+    hub = HubClient(settings.soma_hub_url, settings.soma_hub_token)
     with httpx.Client(
         timeout=30, follow_redirects=True, headers={"User-Agent": "media-center/0.2"}
     ) as http:

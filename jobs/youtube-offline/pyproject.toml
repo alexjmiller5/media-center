@@ -1,7 +1,7 @@
 [project]
 name = "media-center-youtube-offline"
 version = "0.1.0"
-description = "Keeps requested YouTube videos as checksummed offline copies in a Life Data hub, driven by an outbound long poll on the mac mini"
+description = "Keeps requested YouTube videos as checksummed offline copies in a Soma hub, driven by an outbound long poll on the mac mini"
 requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28",

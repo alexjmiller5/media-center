@@ -93,7 +93,7 @@ import Observation
     catch { self.error = error as? HubError == .unavailable ? nil : "Reconnect to validate your access and media configuration." }
   }
   func begin() -> URL? {
-    guard let enrollment, let url = URL(string: endpoint) else { error = "Enter your Life Data HTTPS address."; return nil }
+    guard let enrollment, let url = URL(string: endpoint) else { error = "Enter your Soma HTTPS address."; return nil }
     do { error = nil; return try enrollment.begin(endpoint: url, name: "Media Center").url }
     catch { self.error = "Could not begin secure enrollment. Check the HTTPS address."; return nil }
   }

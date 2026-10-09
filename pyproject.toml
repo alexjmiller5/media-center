@@ -1,7 +1,7 @@
 [project]
 name = "media-center"
 version = "0.1.0"
-description = "Daily ingestion of TMDB episodes, YouTube uploads and RSS/scraped articles into a life-data hub"
+description = "Daily ingestion of TMDB episodes, YouTube uploads and RSS/scraped articles into a soma hub"
 requires-python = ">=3.13"
 dependencies = [
     "feedparser>=6.0.12",

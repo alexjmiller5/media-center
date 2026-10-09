@@ -1,4 +1,4 @@
-"""Daily ingestion: TMDB episodes, YouTube videos, feed articles -> life-data.
+"""Daily ingestion: TMDB episodes, YouTube videos, feed articles -> soma.
 
 Plain Python, no Modal imports. Each source is independent: a failure is
 logged and counted, the run continues after recovery. New items and provenance

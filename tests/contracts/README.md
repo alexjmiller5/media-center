@@ -1,10 +1,10 @@
 # Cross-service capture contract
 
-Run with tested Life Data and Synapse development checkouts and a Python
+Run with tested Soma and Synapse development checkouts and a Python
 interpreter containing Synapse's locked dependencies:
 
 ```sh
-CONTRACT_LIFE_DATA=/path/to/life-data \
+CONTRACT_SOMA=/path/to/soma \
 CONTRACT_SYNAPSE=/path/to/synapse \
 CONTRACT_PYTHON=/path/to/synapse/.venv/bin/python \
 bun test tests/contracts/capture_gateway.test.ts

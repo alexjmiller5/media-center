@@ -1,5 +1,5 @@
 # nix-darwin module: the YouTube offline job as a kept-alive launchd user agent
-# (`youtube-offline watch`) that long-polls a Life Data hub subscription on
+# (`youtube-offline watch`) that long-polls a Soma hub subscription on
 # youtube_videos.offline_requested. The hub never reaches into this machine.
 #
 # Runs in the login session (gui/<uid>) so credentialCommand can read the
@@ -23,7 +23,7 @@ let
 in
 {
   options.services.media-center.youtube-offline = {
-    enable = lib.mkEnableOption "keeping requested YouTube videos as offline copies in a Life Data hub";
+    enable = lib.mkEnableOption "keeping requested YouTube videos as offline copies in a Soma hub";
 
     package = lib.mkOption {
       type = lib.types.package;
@@ -39,8 +39,8 @@ in
 
     hubUrl = lib.mkOption {
       type = lib.types.str;
-      description = "HTTPS origin of the Life Data hub.";
-      example = "https://life-data.example.workers.dev";
+      description = "HTTPS origin of the Soma hub.";
+      example = "https://soma.example.workers.dev";
     };
 
     subscriptionId = lib.mkOption {

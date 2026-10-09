@@ -19,7 +19,7 @@ stdenvNoCC.mkDerivation {
     cp -R MediaCenter.app "$out/Applications/"
   '';
   meta = {
-    description = "Native feed of saved and newly released articles, videos and TV from a Life Data service";
+    description = "Native feed of saved and newly released articles, videos and TV from a Soma service";
     homepage = "https://github.com/alexjmiller5/media-center";
     platforms = lib.platforms.darwin;
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];

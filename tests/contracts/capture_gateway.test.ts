@@ -2,14 +2,14 @@ import {expect,test} from 'bun:test';
 import {resolve} from 'node:path';
 
 // Explicit development checkouts. No installed user state or credentials.
-const life=process.env.CONTRACT_LIFE_DATA;
+const soma=process.env.CONTRACT_SOMA;
 const synapse=process.env.CONTRACT_SYNAPSE;
 const python=process.env.CONTRACT_PYTHON;
-if(!life||!synapse||!python)throw Error('Set CONTRACT_LIFE_DATA, CONTRACT_SYNAPSE and CONTRACT_PYTHON to dependency checkouts/interpreter');
-const {default:worker}=await import(resolve(life,'worker/src/index.js'));
-const {captureGateway}=await import(resolve(life,'worker/src/capture-gateway.js'));
-const {D1Shim}=await import(resolve(life,'worker/test/d1shim.js'));
-const {ensureAuthReady,hashToken}=await import(resolve(life,'worker/src/auth.js'));
+if(!soma||!synapse||!python)throw Error('Set CONTRACT_SOMA, CONTRACT_SYNAPSE and CONTRACT_PYTHON to dependency checkouts/interpreter');
+const {default:worker}=await import(resolve(soma,'worker/src/index.js'));
+const {captureGateway}=await import(resolve(soma,'worker/src/capture-gateway.js'));
+const {D1Shim}=await import(resolve(soma,'worker/test/d1shim.js'));
+const {ensureAuthReady,hashToken}=await import(resolve(soma,'worker/src/auth.js'));
 
 test('native-shaped capture crosses gateway, resolver and real hub without losing user state',async()=>{
  const DB=new D1Shim(),AUTH_DB=new D1Shim();

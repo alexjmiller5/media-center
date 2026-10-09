@@ -3,15 +3,15 @@
 Native iPhone and Mac apps combine saved articles, videos and next TV episodes
 in one feed. A daily poller ingests TV episodes (TMDB), YouTube uploads (YouTube
 Data API) and articles (RSS, generic link scraping, public Bluesky and Chrome
-consumer feature updates) into Life Data.
+consumer feature updates) into Soma.
 The poller runs on [Modal](https://modal.com) as a single daily cron job.
 
 ## Native clients
 
-The apps require iOS 17+ or macOS 14+. They use the supported Life Data API;
-Life UI is another client of that service, not their backend.
+The apps require iOS 17+ or macOS 14+. They use the supported Soma API;
+Iris is another client of that service, not their backend.
 
-Enter your Life Data HTTPS address, open browser approval, and verify the
+Enter your Soma HTTPS address, open browser approval, and verify the
 device code. Each device enrolls its own scoped credential in Keychain.
 The service operator configures the `media-center` enrollment profile,
 runtime media field/status bindings, catalog metadata and capture adapter.
@@ -30,7 +30,7 @@ Replacement devices enroll again. Disconnect revokes that device's access.
 - Add waits for a resolved saved receipt. Offline input and unconfirmed changes
   remain device-local drafts; nothing retries automatically.
 - Already-viewed pages support bounded offline browsing. Filter preferences stay
-  on each device; shared saves, follows and consumption live in Life Data.
+  on each device; shared saves, follows and consumption live in Soma.
 
 No analytics or mobile notifications are included.
 
@@ -40,7 +40,7 @@ No analytics or mobile notifications are included.
 Install with Homebrew (`brew install --cask <tap-owner>/tap/media-center`) or
 with Nix: add this repository as a flake input, import
 `inputs.media-center.homeModules.default` in home-manager and set
-`programs.media-center.enable = true;`. Open Media Center, enter your Life Data
+`programs.media-center.enable = true;`. Open Media Center, enter your Soma
 HTTPS address and approve the device in the browser.
 
 **iPhone.** Personal builds are Ad Hoc: the phone must be registered in the
@@ -77,7 +77,7 @@ just run ios --synthetic --test-id "$(uuidgen)"   # Debug app with isolated synt
 Keep derived data outside cloud-synced folders (`IOS_DERIVED_DATA`).
 Native CI runs the model tests, the signing/release helper tests, both platform
 builds and synthetic UI interactions, including largest Dynamic Type iPhone layouts. Fixtures never enroll a personal device. The
-generated canonical enrollment policy is checked against its pinned Life Data
+generated canonical enrollment policy is checked against its pinned Soma
 revision; see [service contracts](tests/contracts/README.md).
 
 ## Daily ingestion
@@ -189,12 +189,12 @@ A Mac release is an approved `vX.Y.Z` tag push: CI signs with Developer ID,
 notarizes, publishes the zip and `SHA256SUMS`, then updates the cask. After it
 succeeds, set `version` and `hash` in `nix/package.nix` to the published asset.
 
-Then enroll the poller with a Life Data profile granting broad `tables:read`
-and `tables:write` (`life login --profile <id> --name "Media Center poller"
+Then enroll the poller with a Soma profile granting broad `tables:read`
+and `tables:write` (`soma login --profile <id> --name "Media Center poller"
 --start pending.json`, approve the printed URL, then
-`life login --claim pending.json --wait`) and put the printed token in the
-`LIFE_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
-`LIFE_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`. Per-table grants cannot
+`soma login --claim pending.json --wait`) and put the printed token in the
+`SOMA_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
+`SOMA_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`. Per-table grants cannot
 replace the broad pair: the poller reads and inserts `provenance` edges, and
 `provenance` is a reserved table no table-scoped grant can name.
 
@@ -204,7 +204,7 @@ Other one-time steps that cannot be codified:
 
 ## Bring your own hub
 
-This service is agnostic to which life-data hub it talks to - any endpoint
+This service is agnostic to which soma hub it talks to - any endpoint
 implementing `/v1/rows/pull`, `/v1/rows/insert`, `/v1/rows/push` and
 `/v1/rows/patch` (see `src/core/hub.py`)
 works, as long as it has these tables:
