@@ -108,14 +108,17 @@ jobs:
             DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- \
             ONLY_ACTIVE_ARCH=NO 'ARCHS=arm64 x86_64' \
             MARKETING_VERSION="$RELEASE_VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" -quiet archive
-          bundle=$(plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/$APP.xcarchive/Products/Applications/$APP.app/Contents/Info.plist")
-          plutil -create xml1 "$RUNNER_TEMP/export-options.plist"
-          plutil -insert method -string developer-id "$RUNNER_TEMP/export-options.plist"
-          plutil -insert signingStyle -string manual "$RUNNER_TEMP/export-options.plist"
-          plutil -insert teamID -string "$TEAM_ID" "$RUNNER_TEMP/export-options.plist"
-          plutil -insert signingCertificate -string "$IDENTITY_SHA" "$RUNNER_TEMP/export-options.plist"
-          plutil -insert provisioningProfiles -dictionary "$RUNNER_TEMP/export-options.plist"
-          plutil -insert "provisioningProfiles.$bundle" -string "$PROFILE_UUID" "$RUNNER_TEMP/export-options.plist"
+          # plistlib, not plutil: plutil key paths split the dotted bundle ID.
+          python3 - "$TEAM_ID" "$IDENTITY_SHA" "$PROFILE_UUID" "$RUNNER_TEMP" "$APP" <<'PYTHON'
+          import plistlib, sys
+          from pathlib import Path
+          team, certificate, profile, root, app = sys.argv[1:]
+          root = Path(root)
+          info = plistlib.loads((root / f"{app}.xcarchive/Products/Applications/{app}.app/Contents/Info.plist").read_bytes())
+          (root / "export-options.plist").write_bytes(plistlib.dumps({
+              "method": "developer-id", "signingStyle": "manual", "teamID": team, "signingCertificate": certificate,
+              "provisioningProfiles": {info["CFBundleIdentifier"]: profile}}))
+          PYTHON
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/$APP.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export-options.plist"
           mkdir -p build

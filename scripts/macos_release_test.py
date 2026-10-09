@@ -1,5 +1,7 @@
 import json
+import plistlib
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -86,6 +88,23 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual(
             self.workflow["env"]["PROFILE_ID"], "${{ vars.MACOS_PROVISIONING_PROFILE_ID }}"
         )
+
+    def test_export_options_key_the_profile_by_the_dotted_bundle_id(self):
+        sign = self.step("submit", "Sign and verify app")["run"]
+        blocks = [b.split("\nPYTHON")[0] for b in sign.split("<<'PYTHON'\n")[1:]]
+        script = next(b for b in blocks if "export-options.plist" in b)
+        with tempfile.TemporaryDirectory() as root:
+            info = Path(root) / "MediaCenter.xcarchive/Products/Applications/MediaCenter.app/Contents"
+            info.mkdir(parents=True)
+            (info / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "com.example.media-center"}))
+            subprocess.run(["python3", "-", "ABCDE12345", "A" * 40, "uuid-1", root, "MediaCenter"],
+                           input=script, text=True, check=True)
+            options = plistlib.loads((Path(root) / "export-options.plist").read_bytes())
+        self.assertEqual(options, {
+            "method": "developer-id", "signingStyle": "manual", "teamID": "ABCDE12345",
+            "signingCertificate": "A" * 40,
+            "provisioningProfiles": {"com.example.media-center": "uuid-1"},
+        })
 
     def test_submit_uploads_once_and_release_only_waits(self):
         submit = self.step("submit", "Submit signed archive")["run"]
