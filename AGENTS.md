@@ -309,8 +309,12 @@ Debug synthetic data publishes one offline part; the UI test
   ASC key, tap token) through the project CI service account; the apps never
   receive these credentials. CI never creates certificates or profiles.
 - `flake.nix` exports `packages.<darwin>.media-center` (the published zip,
-  unmodified) and `homeModules.default` (`programs.media-center.enable`).
-  `nix/package.nix` pins the latest release's version and hash.
+  unmodified), `darwinModules.default` (the primary install:
+  `programs.media-center.enable` puts the app in `/Applications/Nix Apps` and
+  refuses a duplicate `media-center` cask) and `homeModules.default`.
+  `nix/package.nix` pins the latest release's version and hash; `nix flake
+  check` runs `nix/checks.nix` (module evaluation and byte-for-byte bundle
+  preservation, symlinks and executables included).
 - Ordinary changes never bump `MARKETING_VERSION` or push a release tag.
 
 ## Native domain library

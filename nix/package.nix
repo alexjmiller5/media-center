@@ -2,7 +2,7 @@
 # Set to the latest published release (the GitHub asset and its SHA256SUMS entry).
 , version ? "0.1.0"
 , url ? "https://github.com/alexjmiller5/media-center/releases/download/v${version}/MediaCenter-v${version}.zip"
-, hash ? lib.fakeHash
+, hash ? "sha256-04Rqmhi3QpfOUm+lBWa016l531w5AW028t+tHJ/ulY8="
 }:
 stdenvNoCC.mkDerivation {
   pname = "media-center";

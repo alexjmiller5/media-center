@@ -37,11 +37,14 @@ No analytics or mobile notifications are included.
 ## Install
 
 **Mac.** Signed, notarized releases are published as GitHub release assets.
-Install with Homebrew (`brew install --cask <tap-owner>/tap/media-center`) or
-with Nix: add this repository as a flake input, import
-`inputs.media-center.homeModules.default` in home-manager and set
-`programs.media-center.enable = true;`. Open Media Center, enter your Soma
-HTTPS address and approve the device in the browser.
+Install with Nix: add this repository as a flake input, import
+`inputs.media-center.darwinModules.default` in nix-darwin and set
+`programs.media-center.enable = true;`. The app appears as
+`/Applications/Nix Apps/MediaCenter.app`, byte-for-byte the published bundle.
+(`homeModules.default` offers the same option for home-manager alone, and
+`brew install --cask <tap-owner>/tap/media-center` works where a tap is
+published; enable only one of them.) Open Media Center, enter your Soma HTTPS
+address and approve the device in the browser.
 
 **iPhone.** Personal builds are Ad Hoc: the phone must be registered in the
 signing team and included in the app's Ad Hoc profile. The manual
@@ -154,7 +157,7 @@ src/core/         business logic (plain Python, portable)
 tests/            pytest
 packages/MediaKit shared native model, transport and enrollment policy
 apps/             iPhone/Mac shells, shared SwiftUI and synthetic UI tests
-nix/              signed Mac release package and home-manager module
+nix/              signed Mac release package, nix-darwin/home-manager modules, flake checks
 .env.tpl          secrets manifest (1Password op:// refs, committed)
 justfile          gen / test / check / fmt / run / install / ota / logs / sync-secrets / deploy
 ```
@@ -186,8 +189,11 @@ account needs read access to that signing vault as well as the project vault
   workflow verifies against.
 
 A Mac release is an approved `vX.Y.Z` tag push: CI signs with Developer ID,
-notarizes, publishes the zip and `SHA256SUMS`, then updates the cask. After it
-succeeds, set `version` and `hash` in `nix/package.nix` to the published asset.
+proves the signed identity reaches the Data Protection Keychain, notarizes,
+publishes the zip and `SHA256SUMS`, then updates the cask when a tap is set.
+If notarization times out, rerun only the failed `release` job. After it
+succeeds, set `version` and `hash` in `nix/package.nix` to the published asset
+and run `nix flake check` (module evaluation and bundle preservation).
 
 Then enroll the poller with a Soma profile granting broad `tables:read`
 and `tables:write` (`soma login --profile <id> --name "Media Center poller"

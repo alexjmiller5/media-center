@@ -13,7 +13,13 @@
           default = package;
           media-center = package;
         });
+      darwinModules.default = import ./nix/darwin.nix;
+      darwinModules.media-center = import ./nix/darwin.nix;
       homeModules.default = homeModule;
       homeModules.media-center = homeModule;
+      checks = forSystems (pkgs: import ./nix/checks.nix {
+        inherit pkgs homeModule;
+        package = pkgs.callPackage ./nix/package.nix {};
+      });
     };
 }
