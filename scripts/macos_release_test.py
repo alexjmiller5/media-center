@@ -41,9 +41,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         triggers = self.workflow.get("on", self.workflow.get("true"))
         self.assertEqual(triggers, {"push": {"tags": ["v*"]}})
         self.assertEqual(self.workflow["permissions"], {"contents": "read"})
-        self.assertIn(
-            r"^v(0|[1-9][0-9]*)\.", self.step("submit", "Validate release inputs")["run"]
-        )
+        self.assertIn(r"^v(0|[1-9][0-9]*)\.", self.step("submit", "Validate release inputs")["run"])
 
     def test_tap_token_never_enters_a_url_or_the_signing_jobs(self):
         self.assertNotIn("x-access-token", self.text)
@@ -83,7 +81,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         # Data Protection Keychain create/read/update/delete before upload.
         self.assertIn("scripts/test-macos-keychain.sh", sign)
         self.assertLess(
-            sign.index("scripts/verify-macos-signing.py"), sign.index("scripts/test-macos-keychain.sh")
+            sign.index("scripts/verify-macos-signing.py"),
+            sign.index("scripts/test-macos-keychain.sh"),
         )
         self.assertEqual(
             self.workflow["env"]["PROFILE_ID"], "${{ vars.MACOS_PROVISIONING_PROFILE_ID }}"
@@ -94,28 +93,45 @@ class ReleaseWorkflowTests(unittest.TestCase):
         blocks = [b.split("\nPYTHON")[0] for b in sign.split("<<'PYTHON'\n")[1:]]
         script = next(b for b in blocks if "export-options.plist" in b)
         with tempfile.TemporaryDirectory() as root:
-            info = Path(root) / "MediaCenter.xcarchive/Products/Applications/MediaCenter.app/Contents"
+            info = (
+                Path(root) / "MediaCenter.xcarchive/Products/Applications/MediaCenter.app/Contents"
+            )
             info.mkdir(parents=True)
-            (info / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "com.example.media-center"}))
-            subprocess.run(["python3", "-", "ABCDE12345", "A" * 40, "uuid-1", root, "MediaCenter"],
-                           input=script, text=True, check=True)
+            (info / "Info.plist").write_bytes(
+                plistlib.dumps({"CFBundleIdentifier": "com.example.media-center"})
+            )
+            subprocess.run(
+                ["python3", "-", "ABCDE12345", "A" * 40, "uuid-1", root, "MediaCenter"],
+                input=script,
+                text=True,
+                check=True,
+            )
             options = plistlib.loads((Path(root) / "export-options.plist").read_bytes())
-        self.assertEqual(options, {
-            "method": "developer-id", "signingStyle": "manual", "teamID": "ABCDE12345",
-            "signingCertificate": "A" * 40,
-            "provisioningProfiles": {"com.example.media-center": "uuid-1"},
-        })
+        self.assertEqual(
+            options,
+            {
+                "method": "developer-id",
+                "signingStyle": "manual",
+                "teamID": "ABCDE12345",
+                "signingCertificate": "A" * 40,
+                "provisioningProfiles": {"com.example.media-center": "uuid-1"},
+            },
+        )
 
     def test_submit_uploads_once_and_release_only_waits(self):
         submit = self.step("submit", "Submit signed archive")["run"]
         self.assertIn("notarytool submit", submit)
         self.assertIn("--no-wait", submit)
         self.assertNotIn("notarytool submit", json.dumps(self.steps("release")))
-        self.assertIn("notarytool wait", self.step("release", "Wait for existing notarization")["run"])
+        self.assertIn(
+            "notarytool wait", self.step("release", "Wait for existing notarization")["run"]
+        )
         preserve = self.step("submit", "Preserve signed submission")
         self.assertEqual(preserve["with"]["if-no-files-found"], "error")
-        self.assertEqual(self.workflow["jobs"]["submit"]["outputs"]["artifact_id"],
-                         "${{ steps.artifact.outputs.artifact-id }}")
+        self.assertEqual(
+            self.workflow["jobs"]["submit"]["outputs"]["artifact_id"],
+            "${{ steps.artifact.outputs.artifact-id }}",
+        )
 
     def test_release_job_rebuilds_nothing_and_verifies_before_publishing(self):
         release = self.workflow["jobs"]["release"]
@@ -132,8 +148,13 @@ class ReleaseWorkflowTests(unittest.TestCase):
         ]:
             self.assertLess(names.index(earlier), names.index(later))
         package = self.step("release", "Package accepted app")["run"]
-        for check in ("stapler staple", "stapler validate", "codesign --verify --deep --strict",
-                      "spctl --assess", "SHA256SUMS"):
+        for check in (
+            "stapler staple",
+            "stapler validate",
+            "codesign --verify --deep --strict",
+            "spctl --assess",
+            "SHA256SUMS",
+        ):
             self.assertIn(check, package)
 
 
