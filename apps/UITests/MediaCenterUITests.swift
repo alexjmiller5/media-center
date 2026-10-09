@@ -40,6 +40,14 @@ import XCTest
       button.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
       XCTAssertTrue(button.waitForExistence(timeout: 10))
       XCTAssertNotEqual(button.value as? String, previous, "Filter switch must change before checking results")
+    } else if identifier.hasPrefix("nav.") {
+      // A tab tap during the first feed load can be dropped; confirm the selection.
+      for _ in 0..<3 where !button.isSelected {
+        button.tap()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: button)
+        _ = XCTWaiter().wait(for: [selected], timeout: 3)
+      }
+      XCTAssertTrue(button.isSelected, identifier)
     } else { button.tap() }
     #endif
   }
