@@ -195,8 +195,8 @@ and `tables:write` (`soma login --profile <id> --name "Media Center poller"
 `soma login --claim pending.json --wait`) and put the printed token in the
 `SOMA_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
 `SOMA_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`. Per-table grants cannot
-replace the broad pair: the poller reads and inserts `provenance` edges, and
-`provenance` is a reserved table no table-scoped grant can name.
+replace the broad pair: the poller's provenance recovery reads `provenance`,
+which no table-scoped read grant can name.
 
 Other one-time steps that cannot be codified:
 

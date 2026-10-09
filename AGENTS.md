@@ -63,7 +63,7 @@ There is no analytics SDK or mobile notification permission.
 | Var | Purpose |
 |---|---|
 | `SOMA_HUB_URL` | Base URL of the soma hub API |
-| `SOMA_HUB_TOKEN` | The poller's own Soma token, enrolled with a profile granting broad `tables:read` and `tables:write`: it reads and inserts `provenance`, a reserved table no table-scoped grant can name |
+| `SOMA_HUB_TOKEN` | The poller's own Soma token, enrolled with the profile `media-center-poller-v1` (broad `tables:read` and `tables:write`): its provenance recovery reads `provenance`, which no table-scoped read grant can name |
 | `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) - account-level key, shared with the derivations project since TMDB issues only one v3 key per account |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) |
 
