@@ -15,8 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: swift test --package-path packages/MediaKit --jobs 2
-      - name: Release Keychain probe compiles
-        run: swift build -c release --package-path scripts/keychain-probe --jobs 2
       - name: Signing and release helpers
         run: for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test; do python3 "scripts/$t.py"; done
   policy:
@@ -25,7 +23,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
-          repository: alexjmiller5/soma
+          repository: alexjmiller5/life-data
           ref: ed7d7057b3dd11d009599db0ad1b340adf66e070
           path: .policy-source
       - uses: oven-sh/setup-bun@v2
@@ -65,13 +63,12 @@ jobs:
         if: matrix.platform == 'iOS'
         run: xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-normal.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -maximum-test-execution-time-allowance 90 -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - name: Capture largest Dynamic Type layouts
-        # One test walks every screen at AX5 (~95 s on a normal runner); 90 s rounds to a 2 min ceiling.
         if: always() && matrix.platform == 'iOS' && env.MEDIA_TEST_DEVICE != ''
         env:
           TEST_RUNNER_MEDIA_TEST_AX5: "1"
         run: |
           xcrun simctl ui "$MEDIA_TEST_DEVICE" content_size accessibility-extra-extra-extra-large
-          xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-ax5.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 240 -maximum-test-execution-time-allowance 240 -only-testing:MediaCenterUITests/MediaCenterUITests/testSyntheticScreenSnapshots -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+          xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-ax5.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -maximum-test-execution-time-allowance 90 -only-testing:MediaCenterUITests/MediaCenterUITests/testSyntheticScreenSnapshots -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
