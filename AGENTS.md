@@ -292,11 +292,19 @@ Debug synthetic data publishes one offline part; the UI test
   app-owned `MAC_APP_DIRECT` profile (`MACOS_PROVISIONING_PROFILE_ID`), archives
   a universal Release with `Signing/MediaCenter.entitlements` (application
   identifier for the Data Protection Keychain; Debug/test builds stay ad hoc and
-  omit it), exports with Developer ID, verifies both architectures
-  (`scripts/verify-macos-signing.py`), notarizes, staples, then publishes the
-  zip plus `SHA256SUMS`. A separate job updates the cask in
-  `HOMEBREW_TAP_REPOSITORY` via checkout credentials, never a token URL. The
-  signing job restores the runner's keychain search list in an `always()` step.
+  omit it), exports with Developer ID and verifies both architectures
+  (`scripts/verify-macos-signing.py`). The Keychain gate
+  (`scripts/test-macos-keychain.sh`) then signs `scripts/keychain-probe`, which
+  links the production `KeychainCredentialStore`, with the app's Info.plist,
+  profile and entitlements and requires a Data Protection Keychain
+  create/read/update/delete. The `submit` job uploads to the notary once
+  (`--no-wait`) and keeps the ZIP plus a provenance receipt as an artifact; the
+  `release` job only waits, staples, verifies (strict codesign, Gatekeeper) and
+  publishes the zip plus `SHA256SUMS`. After a notary timeout, rerun only the
+  failed `release` job; never rebuild or resubmit. The optional `cask` job runs
+  when `HOMEBREW_TAP_REPOSITORY` is set and pushes via checkout credentials,
+  never a token URL. The signing job restores the runner's keychain search list
+  in an `always()` step. Native CI compiles the probe on every native change.
 - Signing CI reads the documented shared Apple Signing vault exception (P12s,
   ASC key, tap token) through the project CI service account; the apps never
   receive these credentials. CI never creates certificates or profiles.

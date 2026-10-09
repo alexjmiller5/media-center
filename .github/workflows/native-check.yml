@@ -15,6 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: swift test --package-path packages/MediaKit --jobs 2
+      - name: Release Keychain probe compiles
+        run: swift build -c release --package-path scripts/keychain-probe --jobs 2
       - name: Signing and release helpers
         run: for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test; do python3 "scripts/$t.py"; done
   policy:
