@@ -278,6 +278,11 @@ public struct PendingApproval: Equatable, Sendable {
         if editable.contains(role) { allowed.insert("tables:patch:\(binding.table):\(column)") }
       }
     }
+    // The offline copy of a YouTube video is read through the files API; that
+    // grant belongs to this consumer only while a binding carries the role.
+    if bindings.items.values.contains(where: { $0.fields["offlineFile"] != nil }) {
+      allowed.insert("files:read:youtube/")
+    }
     guard Set(session.scopes).isSubset(of: allowed) else { throw HubError.forbidden }
     var metadata: [String: [PropertyMetadata]] = [:]
     for table in columns.keys.sorted() {

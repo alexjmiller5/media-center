@@ -24,7 +24,7 @@ import Testing
   var revokes = 0
   var replyCount = 0
   var replyError: (any Error)?
-  let binding = RecordBinding(
+  var binding = RecordBinding(
     table: "items",
     fields: [
       "id": "id", "title": "title", "status": "status", "saved": "saved", "updatedAt": "updated_at",
@@ -75,7 +75,7 @@ import Testing
       table: table,
       properties: columns.map { column in
         .init(
-          column: column, type: column == "saved" ? "bool" : column == "status" ? "select" : "text",
+          column: column, type: column == "saved" ? "bool" : column == "status" ? "select" : column == "offline_file" ? "json" : "text",
           description: nil, required: false, readOnly: true,
           options: column == "status" ? [.init(v: "Unseen"), .init(v: "Done")] : nil)
       })
@@ -112,6 +112,27 @@ import Testing
     #expect(store.records.isEmpty)
     #expect(fixture.revokes == 1)
   }
+  @Test func offlineFileBindingAdmitsTheFilesGrantAndNothingElseDoes() async throws {
+    // The offline copy of a video is read through `files:read:youtube/`; the grant
+    // belongs to this consumer only when a binding carries the offlineFile role.
+    for bound in [true, false] {
+      let store = MemoryCredentialStore()
+      let fixture = EnrollmentFixture()
+      if bound { fixture.binding.fields["offlineFile"] = "offline_file" }
+      fixture.extraScopes = ["files:read:youtube/"]
+      let session = try EnrollmentSession(
+        store: store,
+        factory: { _, token in
+          fixture.token = token
+          return fixture
+        })
+      _ = try session.begin(endpoint: URL(string: "https://example.test")!, name: "Example")
+      await session.poll()
+      #expect((session.state == .connected) == bound)
+      #expect((session.connection != nil) == bound)
+    }
+  }
+
   @Test func wrongProfileChangedRevisionAndUnboundGrantsFailClosed() async throws {
     for fault in ["profile", "revision", "grant"] {
       let store = MemoryCredentialStore()

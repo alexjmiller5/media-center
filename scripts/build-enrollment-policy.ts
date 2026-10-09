@@ -4,8 +4,8 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 
-const revision = 'ed7d7057b3dd11d009599db0ad1b340adf66e070';
-const contractHash = '0622fd843c2583c9456ff5d7a48afc90b6c3ae028cececc7e944bcfe3452e20e';
+const revision = 'f71f9ca7f7ca31c556509593c1a259f469e0068e';
+const contractHash = '2c2c9fa6e77b79f9a360a8ddcbc43a610b384fee7f98130d6a51c9ca92d49d98';
 const source = process.argv[2];
 if (!source || source.startsWith('--')) throw Error('Usage: bun scripts/build-enrollment-policy.ts SOMA_CHECKOUT [--check]');
 const check = process.argv.includes('--check');
