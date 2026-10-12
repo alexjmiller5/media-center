@@ -105,9 +105,12 @@ public struct MediaBindings: Codable, Equatable, Sendable {
       "release": date, "consumedAt": date, "duration": ["int", "number", "float"],
       "season": ["int"], "episode": ["int"], "isShort": ["bool"], "sourceID": text.union(["ref"]),
       "url": text, "imageURL": text, "tags": ["multi_select"], "note": text,
-      "offlineFile": ["json"],
+      "offlineFile": ["json"], "seriesStatus": ["text", "select"],
     ]
+    // A newer service configuration may bind roles this client does not read yet. They are
+    // skipped here; enrollment still refuses any edit grant for them.
     for (field, column) in binding.fields {
+      guard let types = allowed[field] else { continue }
       guard scopes.contains("tables:read:\(binding.table):\(column)"),
         scopes.contains("catalog:read:\(binding.table):\(column)")
       else {
@@ -115,7 +118,7 @@ public struct MediaBindings: Codable, Equatable, Sendable {
       }
       let candidates = metadata[binding.table, default: []].filter { $0.column == column }
       guard candidates.count == 1, let property = candidates.first,
-        allowed[field]?.contains(property.type) == true
+        types.contains(property.type)
       else {
         throw BindingError.incompatibleType(binding.table, column)
       }

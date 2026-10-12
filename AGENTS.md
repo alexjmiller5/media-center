@@ -370,7 +370,13 @@ control success; uncertain or conflicting patches cannot be silently replayed.
 Enrollment uses the `media-center` service profile and configuration namespace.
 Installation-specific table/field/status mappings and duration units come from
 that profile. Canonical policy rejects broad grants, and native binding checks
-reject grants to unrelated fields. Status mappings must equal the catalog's
+reject grants to unrelated fields. A field role this client does not read is
+skipped (forward compatibility): its column may carry read grants, never patch
+grants, and the roles it reads keep their exact scope and type checks. An unknown
+media kind still fails validation. The optional `seriesStatus` role (text or
+select, TMDB production values) feeds `TVProgress.seriesLabel`, the TV show
+card/detail label; `.youtubeVideo` `imageURL` thumbnails draw 16:9, other
+artwork square. Status mappings must equal the catalog's
 status options exactly. Reconnect checks the stored exact scope set
 and profile revision. One device credential is active per installation: a new
 enrollment revokes earlier ones, and a credential that can no longer connect is

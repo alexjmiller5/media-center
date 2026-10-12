@@ -27,6 +27,8 @@ Replacement devices enroll again. Disconnect revokes that device's access.
   returning or dismissing the review never records consumption.
 - TV cards show the next aired regular episode. Season changes require an exact
   preview and show individual receipts, including partial failures.
+- When the service provides a show's production status, finished shows say
+  whether a new season is coming or the show ended or was canceled.
 - Add waits for a resolved saved receipt. Offline input and unconfirmed changes
   remain device-local drafts; nothing retries automatically.
 - Already-viewed pages support bounded offline browsing. Filter preferences stay
