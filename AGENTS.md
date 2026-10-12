@@ -215,7 +215,7 @@ not a script catalog; one-offs go in `scripts/` and run directly.
 | `just test` | pytest + MediaKit `swift test`; `just test ios` / `just test macos` run that app's synthetic XCUITests |
 | `just check` / `just fmt` | ruff, signing/workflow script tests, unsigned iPhone Simulator and Mac builds / ruff fix |
 | `just run [ios\|macos\|poller] [args]` | Debug app on a simulator or the Mac (`--synthetic --test-id <uuid>` for isolated fixtures), or one ingestion on Modal |
-| `just install <ipa>` / `just ota <ipa>` | Install a verified Ad Hoc IPA on `IOS_DEVICE_ID` (optionally via `IOS_INSTALL_HOST`) / serve a tailnet install page |
+| `just install <ipa>` / `just ota <ipa>` | Install a verified Ad Hoc IPA on `IOS_DEVICE_ID` (optionally via `IOS_INSTALL_HOST`) / add it to the machine's shared tailnet install page (`https://<tailnet name>/install/`) |
 | `just logs` / `just sync-secrets` / `just deploy` | Poller logs / push `.env.tpl` into Modal / fallback poller deploy |
 
 `run poller` and `logs` call bare `modal` so the installed authentication wrapper

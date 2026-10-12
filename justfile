@@ -38,7 +38,7 @@ test *platforms:
 # All static analysis plus unsigned iPhone Simulator and Mac builds (read-only).
 check: gen
     uv run ruff check . && uv run ruff format --check .
-    for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test; do python3 "scripts/$t.py" -q; done
+    for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test ota_install_test; do python3 -B "scripts/$t.py" -q; done
     xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -derivedDataPath "{{derived_data}}/ios" \
       -destination "generic/platform=iOS Simulator" CODE_SIGNING_ALLOWED=NO -quiet build
     xcodebuild -project apps/macos/MediaCenter.xcodeproj -scheme MediaCenter -derivedDataPath "{{derived_data}}/macos" \
@@ -98,9 +98,9 @@ install ipa:
     echo "  cable    plug the phone into the paired Mac, then: $cmd '$artifact'"
     exit 1
 
-# Serve a verified .ipa as a tailnet install page (blocks while serving; OTA_TTL seconds, default 900).
+# Add a verified .ipa to this machine's shared tailnet install page (https://<tailnet name>/install/; returns at once).
 ota ipa:
-    ./scripts/ota-install.sh "{{ipa}}"
+    ./scripts/ota-install.py "{{ipa}}"
 
 # Stream logs from the deployed poller
 logs:
