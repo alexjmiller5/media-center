@@ -154,7 +154,11 @@ class CachedHub:
         ]
 
     def edge_ids(self, from_kind: str) -> set[str]:
-        """Stored provenance IDs (tombstones included) that this kind's edges can collide with."""
+        """Stored provenance IDs (tombstones included) that this kind's edges can collide with.
+
+        Read once per kind, then kept current from insert acknowledgments. The
+        read needs broad `tables:read`: soma has no narrow provenance read.
+        """
         if from_kind not in self._edges:
             self._edges[from_kind] = self._edge_range(f"{from_kind}:")
         return self._edges[from_kind]
@@ -210,9 +214,13 @@ def save_state(path: Path, state: dict) -> None:
 def imported_from(
     from_kind: str, from_ref: str, to_kind: str, to_ref: str, *, created_row: bool = True
 ) -> dict:
-    """Record the stored source relationship, distinguishing creation from repair."""
+    """Record the stored source relationship, distinguishing creation from repair.
+
+    The id is soma's canonical `<from_kind>:<from_ref>:<to_kind>:<to_ref>`, which
+    `provenance:create:<to_kind>` requires. Older edges omit `to_kind` (`legacy_edge_id`).
+    """
     return {
-        "id": f"{from_kind}:{from_ref}:{to_ref}",
+        "id": f"{from_kind}:{from_ref}:{to_kind}:{to_ref}",
         "from_kind": from_kind,
         "from_ref": from_ref,
         "to_kind": to_kind,
@@ -223,3 +231,8 @@ def imported_from(
         "asserted_by": ASSERTED_BY,
         "updated_at": now_iso(),
     }
+
+
+def legacy_edge_id(edge: dict) -> str:
+    """The poller's older `<from_kind>:<from_ref>:<to_ref>` edge id; stored ones count as existing."""
+    return f"{edge['from_kind']}:{edge['from_ref']}:{edge['to_ref']}"

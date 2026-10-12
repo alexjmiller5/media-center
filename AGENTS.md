@@ -63,7 +63,7 @@ There is no analytics SDK or mobile notification permission.
 | Var | Purpose |
 |---|---|
 | `SOMA_HUB_URL` | Base URL of the soma hub API |
-| `SOMA_HUB_TOKEN` | The poller's own Soma token, enrolled with the profile `media-center-poller-v1` (broad `tables:read` and `tables:write`): its provenance repair reads its `provenance` ID range, which no table-scoped read grant can name |
+| `SOMA_HUB_TOKEN` | The poller's own Soma token, enrolled with the profile in `docs/poller-profile.json` (`media-center-poller-v2`): column reads of exactly the cached columns, `feed_since` patches on `tv_shows`/`feeds`, whole-table writes of the three item tables and `youtube_channels`, and `provenance:create` for the item tables. It cannot read `provenance` |
 | `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) - account-level key, shared with the derivations project since TMDB issues only one v3 key per account |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) |
 
@@ -72,7 +72,7 @@ There is no analytics SDK or mobile notification permission.
 | Module | Purpose |
 |---|---|
 | `core/config.py` | `Settings` - the four env vars above |
-| `core/hub.py` | `CachedHub` (every read from the poller's cached copy, kept current with `table_pull`; known edge IDs; write passthrough that marks the table for re-read), `HubClient` (`post`/`insert`/`push`/revision-checked `patch`), `load_state`/`save_state` (gzip JSON in the Volume), `imported_from`, `now_iso` |
+| `core/hub.py` | `CachedHub` (every read from the poller's cached copy, kept current with `table_pull`; known edge IDs; write passthrough that marks the table for re-read), `HubClient` (`post`/`insert`/`push`/revision-checked `patch`), `load_state`/`save_state` (gzip JSON in the Volume), `imported_from` (canonical edge ID), `legacy_edge_id`, `now_iso` |
 | `core/table_pull.py` | Soma's incremental table-pull helper, vendored verbatim - update by re-copying from the soma repo, never edit |
 | `core/tmdb.py` | TMDB show/season lookups -> `tv_episodes` rows |
 | `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows |
@@ -92,9 +92,14 @@ There is no analytics SDK or mobile notification permission.
   its next use. `run_daily` saves the state after every kind. Known provenance
   edge IDs persist beside the rows and grow from insert acknowledgments
   (`inserted` and `existing`); a kind with none saved reads only its
-  `<source table>:` ID range of `provenance` once. A missing, unreadable or
-  other-endpoint state file means one full read, never an error. A new read
-  column goes into `READS`, which re-reads that table in full once.
+  `<source table>:` ID range of `provenance` once. That read needs broad
+  `tables:read`; the poller's own credential is refused, so its repair counts
+  as failed and links only items it created in that run until an edge set is
+  saved (one run with a broad-read credential, or a restored Volume file). A
+  missing, unreadable or other-endpoint state file means one full read of the
+  tables, never an error. A new read column goes into `READS`, which re-reads
+  that table in full once, and into `docs/poller-profile.json` under a new
+  profile ID (`test_poller_profile_reads_exactly_the_cached_columns`).
 - **Catalog every tracked source regardless of follow or user status.**
   `follow` only gates the reader's feed. Known items are never reinitialized;
   ingestion preserves user status, watched/read dates, notes and tags.
@@ -149,7 +154,12 @@ There is no analytics SDK or mobile notification permission.
   columns (`feed_id`, `show_id`, `channel_id`) and inserts missing
   `imported_from` edges. It does not infer ownership from the current source
   response. Missing/null parents are left alone; manual rows are not assigned
-  a source. Existing edge IDs, including tombstones, are never rewritten.
+  a source. Edge IDs are Soma's canonical
+  `<from_kind>:<from_ref>:<to_kind>:<to_ref>`, the only shape
+  `provenance:create:<to_kind>` admits. Stored edges in the poller's older
+  `<from_kind>:<from_ref>:<to_ref>` shape count as existing; an item with an
+  edge in either shape gets no other. Existing edge IDs, including tombstones,
+  are never rewritten.
 - Provenance repairs run independently of upstream listings and retry after
   rejection, HTTP failure or process interruption. `rejected` includes edge
   rejections, counted per chunk; reconciliation failure increments `failed`.
@@ -234,7 +244,9 @@ All new items and provenance edges use `POST /v1/rows/insert`, with the same
 `{table, columns, rows}` request envelope as push and an
 `{inserted: [ids], existing: [ids], rejected: [...]}` response. Existing IDs
 must remain entirely unchanged, including deleted rows. This route requires
-the same table write scope; unsupported-route errors never fall back to upsert.
+the same table write scope (for edges, `provenance:create:<item table>` beside
+`tables:write:<item table>`, onto live items only); unsupported-route errors
+never fall back to upsert.
 Bluesky ingestion requires `bluesky` options on `feeds.fetch` and
 `feeds.kind`, plus optional JSON `articles.content` owned by the poller.
 Chrome ingestion requires `chrome` on `feeds.fetch` and the same optional
@@ -244,7 +256,10 @@ before activating a source.
 All reads use `POST /v1/cursor` and batched `POST /v1/rows/pull` through the
 same scoped token. Provenance reconciliation reads live item parent
 relationships from the cached copy and `provenance` IDs only as the
-`<source table>:` ID range when no known edges are saved.
+`<source table>:` ID range when no known edges are saved, which only a
+broad-read credential can do.
+`tests/contracts/poller_grants.test.ts` runs the poller against Soma's real
+authorization with exactly the profile's grants.
 Table schemas and conventions are documented in
 the `soma-map` skill - read it before adding a column or a new source table.
 
@@ -338,8 +353,9 @@ It uses compound media identity, runtime record/source bindings and runtime
 consumption-state mappings. Filter preferences never mutate catalog records.
 Run `swift test --package-path packages/MediaKit --jobs 2` with a private
 `--scratch-path` outside cloud-synced folders. Tests contain only synthetic data.
-Cross-service capture checks and their explicit dependency paths are documented
-in `tests/contracts/README.md`; they run entirely against temporary synthetic state.
+Cross-service capture and poller-grant checks and their explicit dependency paths
+are documented in `tests/contracts/README.md`; they run entirely against temporary
+synthetic state.
 
 Native policy and codecs are generated from a pinned Soma revision with
 `bun scripts/build-enrollment-policy.ts <soma-checkout>`. Add `--check` to

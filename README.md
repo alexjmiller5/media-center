@@ -103,6 +103,9 @@ After a source failure, the poller re-reads stored IDs before processing
 another source. If that recovery fails, it stops that kind while preserving
 acknowledged progress. Provenance repair reads stored parent relationships
 and creates missing edges even when upstream no longer lists an item.
+Edges use Soma's canonical `<from_kind>:<from_ref>:<to_kind>:<to_ref>` ID;
+stored edges in the older `<from_kind>:<from_ref>:<to_ref>` shape count as
+existing, so no item gains a second edge.
 Existing edges and tombstones are preserved; repairs never reset item state.
 
 Hub reads come from the poller's own copy of the tables it reads, kept in its
@@ -110,8 +113,11 @@ Modal Volume `media-center-state` and refreshed with Soma's table-pull helper:
 one `/v1/cursor` request when nothing moved, otherwise only rows that arrived
 since the held cursor. A table the run writes is read again before its next
 use. Known provenance edge IDs are kept too; with none kept, the poller reads
-only the `<source table>:` ID range of `provenance`, once. A lost or unreadable
-Volume file costs one full read (about 110 requests on the current estate).
+only the `<source table>:` ID range of `provenance`, once. That read needs
+broad `tables:read`, which the poller's own credential lacks: without saved
+edge IDs it links only the items it creates and counts the repair as failed.
+A lost or unreadable Volume file costs one full read (about 110 requests on
+the current estate).
 
 Bluesky uses canonical DID-based source URLs and public author feeds. It
 retains original posts, quotes and media-only posts, excludes replies and
@@ -184,6 +190,12 @@ not trigger poller deployment.
 ```bash
 op-project-bootstrap .env.tpl --repo <owner>/<repo>
 ```
+
+The poller's Soma credential is its own: add the profile in
+`docs/poller-profile.json` to the hub's `ENROLLMENT_PROFILES`, enroll with
+`soma login --profile media-center-poller-v2 --name "Media Center poller" --start pending.json`,
+approve the printed link, then pipe `soma login --claim pending.json --wait`
+into the project ENV item's `SOMA_HUB_TOKEN`.
 
 Signing CI reads shared Apple signing material, so the project CI service
 account needs read access to that signing vault as well as the project vault

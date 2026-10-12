@@ -90,7 +90,7 @@ def test_patch_sends_one_revision_guarded_edit():
 
 def test_imported_from_row_shape():
     row = imported_from("youtube_channels", "UC123", "youtube_videos", "abc")
-    assert row["id"] == "youtube_channels:UC123:abc"
+    assert row["id"] == "youtube_channels:UC123:youtube_videos:abc"  # soma's canonical edge id
     assert row["from_kind"] == "youtube_channels" and row["from_ref"] == "UC123"
     assert row["to_kind"] == "youtube_videos" and row["to_ref"] == "abc"
     assert row["rel"] == "imported_from"
