@@ -8,7 +8,8 @@ struct MediaCenterRoot: View {
     Group {
       if let library = model.library, model.workspace.connection == library.connection.identity { MediaLibraryView(model: model, library: library) }
       else {
-        VStack(alignment: .leading, spacing: 20) {
+        // Scrolls so the keyboard and failure details never truncate the connect text.
+        ScrollView { VStack(alignment: .leading, spacing: 20) {
           Text("Media Center").font(.largeTitle.bold())
           Text("A place for what you want to read and watch.").foregroundStyle(.secondary)
           Text("Connect to Soma").font(.title2.bold())
@@ -23,10 +24,16 @@ struct MediaCenterRoot: View {
           }
           if let error = model.error { Text(error).foregroundStyle(.errorText) }
           if model.enrollment?.state == .expired { Text("Approval expired. Connect again to request a new code.") }
-          if model.enrollment?.state == .failed { Text("Soma refused this device, or its media configuration is invalid. Nothing was connected; check the service setup, then connect again.").foregroundStyle(.errorText) }
-          if model.enrollment?.cleanupPending == true { Text("A previous device request still needs revocation. Reconnect when the service is available.").foregroundStyle(.secondary) }
+          if model.enrollment?.state == .failed {
+            Text("Soma refused this device, or its media configuration is invalid. Nothing was connected; check the service setup, then connect again.").foregroundStyle(.errorText)
+            if let failure = model.enrollment?.failure { Text(failure).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled).accessibilityIdentifier("enroll.failure") }
+          }
+          if model.enrollment?.cleanupPending == true {
+            Text("A previous device credential is not confirmed revoked yet. Media Center retries each time it opens.").foregroundStyle(.secondary)
+            if let detail = model.enrollment?.cleanupDetail { Text(detail).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled) }
+          }
           if model.starting { ProgressView() }
-        }.padding(32).frame(maxWidth: 480)
+        }.padding(32).frame(maxWidth: 480).frame(maxWidth: .infinity) }.defaultScrollAnchor(.center)
       }
     }.onChange(of: model.workspace.error) { _, error in
       if error == .revoked || error == .profileChanged { Task { await model.disconnect(); model.error = error == .revoked ? "This device’s access was revoked. Reconnect to continue." : "Your media configuration changed. Reconnect to validate access." } }

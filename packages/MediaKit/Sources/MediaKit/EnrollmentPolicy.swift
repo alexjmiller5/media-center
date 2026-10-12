@@ -1,7 +1,11 @@
 import Foundation
 import JavaScriptCore
 
-public enum EnrollmentPolicyError: Error, Equatable { case unavailable, invalidReply }
+public enum EnrollmentPolicyError: Error, Equatable {
+  case unavailable, invalidReply
+  /// The canonical policy refused its input; the message names the rule, never a credential.
+  case rejected(String)
+}
 
 /// Thin JSC adapter. All enrollment decisions execute the pinned canonical service policy.
 @MainActor public final class EnrollmentPolicy {
@@ -25,7 +29,11 @@ public enum EnrollmentPolicyError: Error, Equatable { case unavailable, invalidR
     let value = context.objectForKeyedSubscript("mediaPolicy")?.call(withArguments: [
       operation, input,
     ])
-    guard context.exception == nil, value?.isString == true, let string = value?.toString(),
+    if let exception = context.exception {
+      throw EnrollmentPolicyError.rejected(
+        String((exception.objectForKeyedSubscript("message")?.toString() ?? "policy error").prefix(200)))
+    }
+    guard value?.isString == true, let string = value?.toString(),
       let result = string.data(using: .utf8), result.count <= 65536
     else { throw EnrollmentPolicyError.invalidReply }
     return result

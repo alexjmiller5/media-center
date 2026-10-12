@@ -362,6 +362,14 @@ revoked (or dropped once the service answers 401). A failed read during a sessio
 switches to cached pages; the next successful read on the validated session ends
 the outage, while snapshot browsing revalidates through "Try again". Cancelled
 reads never count as outages. Cancelled or expired candidates remain in Keychain only
-for revocation retries until the hub confirms revocation; they cannot connect.
+for revocation retries until the hub confirms revocation; they cannot connect. A
+never-approved candidate (revocation answers 401) is kept silently for late-approval
+cleanup; only unconfirmed revocations are reported, with their reason (`cleanupDetail`).
+Revocation requests run in their own task, so SwiftUI cancelling the polling task on a
+state change cannot abandon them; a cancelled poll is retried, never a refusal, and
+attaching a new connection likewise runs outside that task. A refused enrollment or
+reconnect records `failure` (failing step plus reason, never a credential), logs it
+through os_log (subsystem `MediaKit`, category `enrollment`) and shows it under the
+error. Source bindings carry no consumption state, so the service may omit `statuses`.
 Nonsecret connection snapshots allow previously viewed offline pages without
 enabling writes or recovering drafts until session revalidation succeeds.

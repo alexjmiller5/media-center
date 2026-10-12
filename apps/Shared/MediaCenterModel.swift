@@ -101,10 +101,13 @@ import Observation
     guard let enrollment else { return }
     while enrollment.state == .waiting && !Task.isCancelled {
       await enrollment.poll()
-      do { try await Task.sleep(for: .seconds(1)) } catch { return }
+      try? await Task.sleep(for: .seconds(1))
     }
+    // SwiftUI cancels this polling task as soon as the state turns connected; attach in a task of its own.
     if enrollment.state == .connected {
-      do { try await attach() } catch { self.error = "Could not open the validated connection." }
+      await Task {
+        do { try await attach() } catch { self.error = "Could not open the validated connection." }
+      }.value
     }
   }
   private func attach() async throws {

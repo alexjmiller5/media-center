@@ -22,6 +22,7 @@ import Testing
   var delayRevocation = false
   var pendingRevocation: CheckedContinuation<CoreSessionReply, any Error>?
   var revokes = 0
+  var revocationStatus: Int?
   var replyCount = 0
   var replyError: (any Error)?
   var binding = RecordBinding(
@@ -30,8 +31,11 @@ import Testing
       "id": "id", "title": "title", "status": "status", "saved": "saved", "updatedAt": "updated_at",
       "hubAt": "hub_at", "deletedAt": "deleted_at",
     ], statuses: ["Unseen": .notStarted, "Done": .finished])
+  /// Fields of a `youtubeChannel` source binding, served as the hub does: without `statuses`.
+  var source: [String: String]?
   var scopes: [String] {
-    binding.fields.values.flatMap { ["tables:read:items:\($0)", "catalog:read:items:\($0)"] }
+    (binding.fields.values.flatMap { ["tables:read:items:\($0)", "catalog:read:items:\($0)"] }
+      + (source ?? [:]).values.flatMap { ["tables:read:channels:\($0)", "catalog:read:channels:\($0)"] })
       .sorted() + extraScopes
   }
   func sessionReply() throws -> CoreSessionReply {
@@ -53,9 +57,14 @@ import Testing
     if method == "POST" {
       revokes += 1
       if delayRevocation {
-        return try await withCheckedThrowingContinuation { pendingRevocation = $0 }
+        let reply = try await withCheckedThrowingContinuation { pendingRevocation = $0 }
+        // URLSession fails a request whose task was cancelled while it was in flight.
+        if Task.isCancelled { throw URLError(.cancelled) }
+        return reply
       }
-      return .init(status: status == 200 ? 200 : 401, data: .object(["logged_out": .bool(true)]))
+      return .init(
+        status: revocationStatus ?? (status == 200 ? 200 : 401),
+        data: .object(["logged_out": .bool(true)]))
     }
     replyCount += 1
     if let replyError { throw replyError }
@@ -64,8 +73,15 @@ import Testing
   }
   func consumerConfig() async throws -> CoreConsumerConfigReply {
     let bindings = MediaBindings(items: ["article": binding], sources: [:])
-    let value = try JSONDecoder().decode(
+    var value = try JSONDecoder().decode(
       [String: CoreJSONValue].self, from: JSONEncoder().encode(bindings))
+    if let source {
+      value["sources"] = .object([
+        "youtubeChannel": .object([
+          "table": .string("channels"), "fields": .object(source.mapValues(CoreJSONValue.string)),
+        ])
+      ])
+    }
     return .init(
       profile: .init(id: profile, revision: configRevision ?? revision),
       config: .init(version: 1, namespace: "media-center", bindings: value))
@@ -75,7 +91,7 @@ import Testing
       table: table,
       properties: columns.map { column in
         .init(
-          column: column, type: column == "saved" ? "bool" : column == "status" ? "select" : column == "offline_file" ? "json" : "text",
+          column: column, type: ["saved", "follow"].contains(column) ? "bool" : column == "status" ? "select" : column == "offline_file" ? "json" : "text",
           description: nil, required: false, readOnly: true,
           options: column == "status" ? [.init(v: "Unseen"), .init(v: "Done")] : nil)
       })
@@ -111,6 +127,82 @@ import Testing
     #expect(session.connection == nil)
     #expect(store.records.isEmpty)
     #expect(fixture.revokes == 1)
+  }
+  @Test func sourceBindingsWithoutStatusesConnect() async throws {
+    // The hub's consumer config omits `statuses` on source bindings: sources have no consumption state.
+    let store = MemoryCredentialStore()
+    let fixture = EnrollmentFixture()
+    fixture.source = [
+      "id": "id", "title": "title", "follow": "follow", "feedSince": "feed_since",
+      "updatedAt": "updated_at", "hubAt": "hub_at", "deletedAt": "deleted_at",
+    ]
+    let session = try EnrollmentSession(
+      store: store,
+      factory: { _, token in
+        fixture.token = token
+        return fixture
+      })
+    _ = try session.begin(endpoint: URL(string: "https://example.test")!, name: "Example")
+    await session.poll()
+    #expect(session.state == .connected)
+    #expect(session.failure == nil)
+    #expect(session.connection?.bindings.sources["youtubeChannel"]?.table == "channels")
+    #expect(session.connection?.bindings.sources["youtubeChannel"]?.statuses == [:])
+  }
+  @Test func refusedEnrollmentExplainsTheFailingStep() async throws {
+    let store = MemoryCredentialStore()
+    let fixture = EnrollmentFixture()
+    fixture.extraScopes = ["tables:read:unrelated:id"]
+    let session = try EnrollmentSession(
+      store: store,
+      factory: { _, token in
+        fixture.token = token
+        return fixture
+      })
+    _ = try session.begin(endpoint: URL(string: "https://example.test")!, name: "Example")
+    await session.poll()
+    #expect(session.state == .failed)
+    #expect(session.failure == "grants: forbidden")
+    #expect(!(session.failure ?? "").contains(fixture.token))
+  }
+  @Test func cancellingThePollingTaskStillRevokesTheRefusedCredential() async throws {
+    // The app polls from `.task(id: state)`, which SwiftUI cancels as soon as the state turns failed.
+    let store = MemoryCredentialStore()
+    let fixture = EnrollmentFixture()
+    fixture.extraScopes = ["tables:read:unrelated:id"]
+    fixture.delayRevocation = true
+    let session = try EnrollmentSession(
+      store: store,
+      factory: { _, token in
+        fixture.token = token
+        return fixture
+      })
+    _ = try session.begin(endpoint: URL(string: "https://example.test")!, name: "Example")
+    let task = Task { await session.poll() }
+    while fixture.pendingRevocation == nil { await Task.yield() }
+    #expect(session.state == .failed)
+    task.cancel()
+    fixture.pendingRevocation?.resume(
+      returning: .init(status: 200, data: .object(["logged_out": .bool(true)])))
+    await task.value
+    #expect(store.records.isEmpty)
+    #expect(!session.cleanupPending)
+  }
+  @Test func cancelledPollIsNotARefusal() async throws {
+    let store = MemoryCredentialStore()
+    let fixture = EnrollmentFixture()
+    fixture.replyError = URLError(.cancelled)
+    let session = try EnrollmentSession(
+      store: store,
+      factory: { _, token in
+        fixture.token = token
+        return fixture
+      })
+    _ = try session.begin(endpoint: URL(string: "https://example.test")!, name: "Example")
+    await session.poll()
+    #expect(session.state == .waiting)
+    #expect(fixture.revokes == 0)
+    #expect(store.records.values.map(\.state) == [.pending])
   }
   @Test func offlineFileBindingAdmitsTheFilesGrantAndNothingElseDoes() async throws {
     // The offline copy of a video is read through `files:read:youtube/`; the grant
@@ -176,6 +268,35 @@ import Testing
     #expect(session.state == .expired)
     #expect(store.records.values.first?.state == .revoking)
     #expect(session.connection == nil)
+    // Never approved: the hub holds nothing to revoke. The candidate stays only for late-approval cleanup.
+    #expect(!session.cleanupPending)
+    await session.retryCleanup()
+    #expect(!session.cleanupPending)
+    #expect(store.records.values.first?.state == .revoking)
+    fixture.status = 200
+    await session.retryCleanup()
+    #expect(store.records.isEmpty)
+    #expect(!session.cleanupPending)
+  }
+  @Test func unconfirmedRevocationExplainsItself() async throws {
+    let store = MemoryCredentialStore()
+    let fixture = EnrollmentFixture()
+    let session = try EnrollmentSession(
+      store: store,
+      factory: { _, token in
+        fixture.token = token
+        return fixture
+      })
+    _ = try session.begin(endpoint: URL(string: "https://example.test")!, name: "Example")
+    fixture.revocationStatus = 500
+    await session.disconnect()
+    #expect(session.cleanupPending)
+    #expect(session.cleanupDetail == "revocation: hub did not revoke the device (HTTP 500)")
+    fixture.revocationStatus = nil
+    await session.retryCleanup()
+    #expect(!session.cleanupPending)
+    #expect(session.cleanupDetail == nil)
+    #expect(store.records.isEmpty)
   }
   @Test func cancellationAndLateApprovalCannotInstallSession() async throws {
     let store = MemoryCredentialStore()

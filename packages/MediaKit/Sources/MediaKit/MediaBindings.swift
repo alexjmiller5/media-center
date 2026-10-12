@@ -19,6 +19,15 @@ public struct RecordBinding: Codable, Equatable, Sendable {
     self.statuses = statuses
     self.durationUnit = durationUnit
   }
+  /// Source bindings carry no consumption state, so the service omits `statuses` for them.
+  /// Item bindings still need a complete mapping; `MediaBindings.validate` enforces it.
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    table = try container.decode(String.self, forKey: .table)
+    fields = try container.decode([String: String].self, forKey: .fields)
+    statuses = try container.decodeIfPresent([String: ConsumptionState].self, forKey: .statuses) ?? [:]
+    durationUnit = try container.decodeIfPresent(DurationUnit.self, forKey: .durationUnit)
+  }
   public func state(for status: String) -> ConsumptionState? { statuses[status] }
 }
 public struct PropertyMetadata: Codable, Equatable, Sendable {

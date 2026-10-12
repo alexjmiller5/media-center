@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import Security
+import os
+
+private let log = Logger(subsystem: "MediaKit", category: "enrollment")
 
 @MainActor public protocol EnrollmentTransport: MediaService {
   func reply(path: String, method: String, body: Data?, limit: Int) async throws -> CoreSessionReply
@@ -26,7 +29,11 @@ public struct PendingApproval: Equatable, Sendable {
   public private(set) var state: State = .idle
   public private(set) var approval: PendingApproval?
   public private(set) var connection: MediaConnection?
+  /// Why the last enrollment or reconnect was refused: the failing step and reason, never a credential.
+  public private(set) var failure: String?
+  /// True while a revocation could not be confirmed; `cleanupDetail` says why.
   public private(set) var cleanupPending = false
+  public private(set) var cleanupDetail: String?
   public private(set) var transport: (any EnrollmentTransport)?
   @ObservationIgnored private let store: any CredentialStore
   @ObservationIgnored private let policy: EnrollmentPolicy
@@ -37,6 +44,9 @@ public struct PendingApproval: Equatable, Sendable {
   @ObservationIgnored private var deadline: TimeInterval = 0
   @ObservationIgnored private var nextPoll: TimeInterval = 0
   @ObservationIgnored private var polling = false
+  @ObservationIgnored private var stage = "session"
+  /// Never-approved candidates the hub answered 401 for: nothing to revoke unless a late approval comes.
+  @ObservationIgnored private var unapproved: Set<String> = []
 
   public init(
     store: any CredentialStore,
@@ -82,6 +92,7 @@ public struct PendingApproval: Equatable, Sendable {
     deadline = now() + Double(approval.policy.timeoutSeconds)
     nextPoll = now()
     polling = false
+    failure = nil
     state = .waiting
     let pending = PendingApproval(url: url, code: approval.approvalCode)
     self.approval = pending
@@ -98,6 +109,7 @@ public struct PendingApproval: Equatable, Sendable {
     polling = true
     defer { if current == generation { polling = false } }
     do {
+      stage = "session"
       let reply = try await transport.reply(
         path: "v1/session", method: "GET", body: nil, limit: 65536)
       guard current == generation else {
@@ -138,13 +150,15 @@ public struct PendingApproval: Equatable, Sendable {
       }
     } catch {
       guard current == generation else { return }
+      // A cancelled poll (its task ended) is not a refusal; the next poll asks again.
       if let error = error as? URLError,
-        [.notConnectedToInternet, .timedOut, .networkConnectionLost].contains(error.code)
+        [.notConnectedToInternet, .timedOut, .networkConnectionLost, .cancelled].contains(error.code)
       {
         nextPoll = now() + 5
       } else {
         state = .failed
         approval = nil
+        fail(error)
         await revoke(record)
         if current == generation {
           self.record = nil
@@ -162,6 +176,8 @@ public struct PendingApproval: Equatable, Sendable {
     let client = try factory(credential.endpoint, credential.token)
     record = credential
     transport = client
+    failure = nil
+    stage = "session"
     do {
       let reply: CoreSessionReply
       do { reply = try await client.reply(path: "v1/session", method: "GET", body: nil, limit: 65536) }
@@ -179,6 +195,7 @@ public struct PendingApproval: Equatable, Sendable {
         record = nil
         transport = nil
         state = .failed
+        fail(error)
       }
       client.close()
       throw error
@@ -210,8 +227,7 @@ public struct PendingApproval: Equatable, Sendable {
     do {
       for credential in try store.all()
       where credential.state != .active && credential.id != record?.id { await revoke(credential) }
-      cleanupPending = try store.all().contains { $0.state != .active && $0.id != record?.id }
-    } catch { cleanupPending = true }
+    } catch { cleanupFailed(error) }
   }
   /// Revokes a stored credential that can no longer connect (revoked, changed or refused).
   public func forget(_ credential: StoredCredential) async {
@@ -221,21 +237,52 @@ public struct PendingApproval: Equatable, Sendable {
   private func revoke(_ credential: StoredCredential) async {
     var revoked = credential
     revoked.state = .revoking
+    unapproved.remove(credential.id)
     do {
       try store.save(revoked)
       let client = try factory(credential.endpoint, credential.token)
       defer { client.close() }
-      let reply = try await client.reply(
-        path: "v1/session", method: "POST", body: nil, limit: 65536)
+      // Its own task: the caller's cancellation (SwiftUI ends the polling task when the state
+      // turns failed) must not abandon a revocation that is already due.
+      let reply = try await Task {
+        try await client.reply(path: "v1/session", method: "POST", body: nil, limit: 65536)
+      }.value
       if reply.status == 401, credential.session != nil {
         // A once-active credential the service no longer accepts is already unusable.
         try store.remove(id: credential.id)
       } else {
         let result: CoreSessionRevocationResult = try policy.invoke("sessionRevocationResult", reply)
-        if result.state == .revoked { try store.remove(id: credential.id) }
+        // A 401 for a never-approved candidate: the hub holds nothing yet. Keep it so a late
+        // approval is still revoked on the next retry, but there is nothing pending to report.
+        if result.state == .revoked { try store.remove(id: credential.id) } else { unapproved.insert(credential.id) }
       }
-      cleanupPending = try store.all().contains { $0.state != .active && $0.id != record?.id }
-    } catch { cleanupPending = true }
+      cleanupPending = try store.all().contains {
+        $0.state != .active && $0.id != record?.id && !unapproved.contains($0.id)
+      }
+      if !cleanupPending { cleanupDetail = nil }
+    } catch { cleanupFailed(error) }
+  }
+  private func cleanupFailed(_ error: any Error) {
+    cleanupPending = true
+    cleanupDetail = "revocation: \(Self.describe(error))"
+    log.error("Device revocation unconfirmed: \(Self.describe(error), privacy: .public)")
+  }
+  private func fail(_ error: any Error) {
+    failure = "\(stage): \(Self.describe(error))"
+    log.error("Enrollment refused at \(self.stage, privacy: .public): \(Self.describe(error), privacy: .public)")
+  }
+  /// A short, credential-free reason for logs and the connect screen.
+  static func describe(_ error: any Error) -> String {
+    func path(_ keys: [any CodingKey]) -> String { keys.map(\.stringValue).joined(separator: ".") }
+    switch error {
+    case EnrollmentPolicyError.rejected(let message): return message
+    case DecodingError.keyNotFound(let key, let context): return "missing \(path(context.codingPath + [key]))"
+    case DecodingError.typeMismatch(_, let context), DecodingError.valueNotFound(_, let context),
+      DecodingError.dataCorrupted(let context):
+      return "invalid \(path(context.codingPath))"
+    case let error as URLError: return "network error \(error.code.rawValue)"
+    default: return String(describing: error)
+    }
   }
   private func validate(
     reply: CoreSessionReply, credential: StoredCredential, transport: any EnrollmentTransport
@@ -257,11 +304,13 @@ public struct PendingApproval: Equatable, Sendable {
       case .object(let data) = reply.data, let capabilities = data["capabilities"],
       try policy.invoke("supportsRowsQuery", capabilities, as: Bool.self)
     else { throw HubError.forbidden }
+    stage = "consumer config"
     let config = try await transport.consumerConfig()
     let canonical: CoreConsumerConfig = try policy.invoke("canonicalConsumerConfig", config.config)
     guard config.profile == profile, canonical.namespace == "media-center" else {
       throw HubError.conflict
     }
+    stage = "bindings"
     let bindings = try JSONDecoder().decode(
       MediaBindings.self, from: JSONEncoder().encode(canonical.bindings))
     guard !bindings.items.isEmpty else { throw HubError.invalidReply }
@@ -283,9 +332,11 @@ public struct PendingApproval: Equatable, Sendable {
     if bindings.items.values.contains(where: { $0.fields["offlineFile"] != nil }) {
       allowed.insert("files:read:youtube/")
     }
+    stage = "grants"
     guard Set(session.scopes).isSubset(of: allowed) else { throw HubError.forbidden }
     var metadata: [String: [PropertyMetadata]] = [:]
     for table in columns.keys.sorted() {
+      stage = "catalog \(table)"
       let projection = try await transport.metadata(table: table, columns: columns[table]!.sorted())
       metadata[table] = projection.properties.map {
         .init(
@@ -293,7 +344,9 @@ public struct PendingApproval: Equatable, Sendable {
           description: $0.description, options: $0.options?.map(\.v))
       }
     }
+    stage = "binding check"
     try bindings.validate(scopes: Set(session.scopes), metadata: metadata)
+    stage = "consumer config recheck"
     guard try await transport.consumerConfig() == config else { throw HubError.conflict }
     return MediaConnection(
       identity: try .init(
