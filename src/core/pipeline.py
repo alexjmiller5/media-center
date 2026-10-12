@@ -2,7 +2,8 @@
 
 Plain Python, no Modal imports. Each source is independent: a failure is
 logged and counted, the run continues after recovery. New items and provenance
-use atomic insert-if-absent writes; snapshots only avoid redundant requests.
+use atomic insert-if-absent writes; the cached snapshot only avoids redundant
+requests.
 """
 
 from hashlib import sha256
@@ -12,7 +13,7 @@ import structlog
 
 from core import feeds as feeds_mod
 from core import tmdb, youtube
-from core.hub import HubClient, imported_from, now_iso
+from core.hub import CachedHub, imported_from, now_iso
 
 log = structlog.get_logger()
 CHUNK = 200
@@ -71,7 +72,6 @@ def _recover_known(hub, table, known, out) -> bool:
 def _sync_provenance(hub, source_table, item_table, parent, new_ids, out) -> None:
     """Repair from persisted relationships, even after an interrupted ingestion run."""
     try:
-        known = {p["id"] for p in hub.pull("provenance", ["id"], include_deleted=True)}
         edges = [
             imported_from(
                 source_table, row[parent], item_table, row["id"], created_row=row["id"] in new_ids
@@ -79,6 +79,7 @@ def _sync_provenance(hub, source_table, item_table, parent, new_ids, out) -> Non
             for row in hub.pull(item_table, ["id", parent])
             if row.get(parent)
         ]
+        known = hub.edge_ids(source_table)
         missing = [edge for edge in edges if edge["id"] not in known]
         for i in range(0, len(missing), CHUNK):
             # Account per chunk so a later HTTP failure cannot hide earlier rejections.
@@ -88,7 +89,7 @@ def _sync_provenance(hub, source_table, item_table, parent, new_ids, out) -> Non
         _log_failure("provenance_failed", exc, kind=item_table)
 
 
-def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
+def sync_tv(hub: CachedHub, http: httpx.Client, key: str) -> dict:
     shows = hub.pull("tv_shows", ["id"])
     stored = {
         e["id"]: e
@@ -138,7 +139,7 @@ def sync_tv(hub: HubClient, http: httpx.Client, key: str) -> dict:
     return out
 
 
-def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
+def sync_youtube(hub: CachedHub, http: httpx.Client, key: str) -> dict:
     channels = hub.pull("youtube_channels", ["id", "uploads_playlist_id", "backfilled"])
     known = {v["id"] for v in hub.pull("youtube_videos", ["id"], include_deleted=True)}
     new_ids = set()
@@ -189,7 +190,7 @@ def sync_youtube(hub: HubClient, http: httpx.Client, key: str) -> dict:
     return out
 
 
-def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
+def sync_feeds(hub: CachedHub, http: httpx.Client) -> dict:
     rows = [f for f in hub.pull("feeds", ["id", "fetch", "scrape_pattern"]) if f["fetch"] != "x"]
     known = {a["id"] for a in hub.pull("articles", ["id"], include_deleted=True)}
     new_ids = set()
@@ -217,7 +218,7 @@ def sync_feeds(hub: HubClient, http: httpx.Client) -> dict:
 SOURCE_TABLES = ("tv_shows", "youtube_channels", "feeds")
 
 
-def sync_feed_boundaries(hub: HubClient) -> dict:
+def sync_feed_boundaries(hub: CachedHub) -> dict:
     """Start the feed boundary of a followed source that has none.
 
     Follow actions set `feed_since` themselves; this covers sources created
@@ -256,10 +257,20 @@ def _safe(kind: str, fn, *args) -> dict:
         return {"failed": 1, "error": type(exc).__name__}
 
 
-def run_daily(hub: HubClient, http: httpx.Client, settings) -> dict:
-    return {
-        "boundaries": _safe("boundaries", sync_feed_boundaries, hub),
-        "tv": _safe("tv", sync_tv, hub, http, settings.tmdb_api_key),
-        "youtube": _safe("youtube", sync_youtube, hub, http, settings.youtube_api_key),
-        "feeds": _safe("feeds", sync_feeds, hub, http),
-    }
+def run_daily(hub: CachedHub, http: httpx.Client, settings, save=None) -> dict:
+    """One ingestion pass; `save(hub.state)` keeps the cache after each kind."""
+    # One cursor round covers every read; later reads only re-pull tables the run wrote.
+    _safe("reads", hub.refresh)
+    out = {}
+    for kind, fn, *args in (
+        ("boundaries", sync_feed_boundaries, hub),
+        ("tv", sync_tv, hub, http, settings.tmdb_api_key),
+        ("youtube", sync_youtube, hub, http, settings.youtube_api_key),
+        ("feeds", sync_feeds, hub, http),
+    ):
+        out[kind] = _safe(kind, fn, *args)
+        if save:
+            save(hub.state)
+    out["reads"] = hub.reads
+    log.info("hub_reads", **hub.reads)
+    return out

@@ -5,17 +5,30 @@ from types import SimpleNamespace
 import httpx
 import pytest
 import structlog.testing
+from fakehub import hub_reads
 
 from core import pipeline
+from core.hub import CachedHub, HubClient
 
 FIX = Path(__file__).parent / "fixtures"
 
 
 class FakeHub:
+    """In-memory stand-in for CachedHub: every read sees the current tables."""
+
+    reads = {"requests": 0, "rows": 0}
+    state = {}
+
     def __init__(self, tables, reject=None):
         self.tables = tables  # table -> list[dict]
         self.pushed = {}  # table -> list[dict]
         self.reject = reject  # optional (table, row) -> dict | None
+
+    def refresh(self):
+        pass
+
+    def edge_ids(self, from_kind):
+        return {p["id"] for p in self.tables.get("provenance", [])}
 
     def pull(self, table, columns, *, include_deleted=False):
         return [
@@ -540,7 +553,7 @@ def test_run_daily_returns_all_three_sections(mocker):
     mocker.patch("core.pipeline.sync_feeds", return_value={"feeds": 0, "articles": 0, "failed": 0})
     settings = mocker.Mock(tmdb_api_key="t", youtube_api_key="y")
     out = pipeline.run_daily(FakeHub({}), httpx.Client(), settings)
-    assert set(out) == {"boundaries", "tv", "youtube", "feeds"}
+    assert set(out) == {"boundaries", "tv", "youtube", "feeds", "reads"}
 
 
 @pytest.mark.parametrize("backfilled", [0, 1])
@@ -727,24 +740,27 @@ def test_kind_failures_log_safe_details_and_continue(http_error):
         else RuntimeError(message)
     )
 
+    reads = hub_reads({})
+
     def handler(request):
-        if json.loads(request.content)["table"] == "tv_shows":
+        if "tv_episodes" in json.loads(request.content).get("tables", []):
             raise error
-        return httpx.Response(200, json={"rows": []})
+        return reads(request)
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    hub = pipeline.HubClient("https://hub.example.com", "test-token", http)
+    hub = CachedHub(HubClient("https://hub.example.com", "test-token", http))
     settings = SimpleNamespace(tmdb_api_key=secret, youtube_api_key=secret)
     with structlog.testing.capture_logs(processors=[structlog.processors.format_exc_info]) as logs:
         result = pipeline.run_daily(hub, http, settings)
     assert all(value not in json.dumps(logs) for value in (secret, body, message))
     error_type = "HTTPStatusError" if http_error else "RuntimeError"
     expected = {"event": "kind_failed", "kind": "tv", "error": error_type, "log_level": "error"}
-    boundary = {**expected, "event": "feed_boundary_failed", "kind": "tv_shows"}
+    prefetch = {**expected, "kind": "reads"}
     if http_error:
-        expected["http_status"] = boundary["http_status"] = 503
-    assert logs == [boundary, expected]
-    assert result["boundaries"] == {"started": 0, "conflicts": 0, "failed": 1}
+        expected["http_status"] = prefetch["http_status"] = 503
+    reads_log = {"event": "hub_reads", "log_level": "info", **result["reads"]}
+    assert logs == [prefetch, expected, reads_log]
+    assert result["boundaries"] == {"started": 0, "conflicts": 0, "failed": 0}
     assert result["tv"] == {"failed": 1, "error": error_type}
     assert result["youtube"] == {"channels": 0, "videos": 0, "failed": 0, "rejected": 0}
     assert result["feeds"] == {"feeds": 0, "articles": 0, "failed": 0, "rejected": 0}

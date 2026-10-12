@@ -18,7 +18,7 @@ consumer connection. They never hold poller or operator credentials.
 
 **Business logic lives in `src/core/` as plain Python with NO Modal imports.**
 Only `app.py` imports `modal` - it is the deployment shim (image, secrets,
-cron schedule). This keeps the logic portable: the same `core` package runs
+state Volume, cron schedule). This keeps the logic portable: the same `core` package runs
 in tests or on any future platform.
 
 - The poller has no HTTP endpoints; its only trigger is the daily
@@ -63,7 +63,7 @@ There is no analytics SDK or mobile notification permission.
 | Var | Purpose |
 |---|---|
 | `SOMA_HUB_URL` | Base URL of the soma hub API |
-| `SOMA_HUB_TOKEN` | The poller's own Soma token, enrolled with the profile `media-center-poller-v1` (broad `tables:read` and `tables:write`): its provenance recovery reads `provenance`, which no table-scoped read grant can name |
+| `SOMA_HUB_TOKEN` | The poller's own Soma token, enrolled with the profile `media-center-poller-v1` (broad `tables:read` and `tables:write`): its provenance repair reads its `provenance` ID range, which no table-scoped read grant can name |
 | `TMDB_API_KEY` | TMDB v3 API key (show/season lookups) - account-level key, shared with the derivations project since TMDB issues only one v3 key per account |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key (uploads playlist, video details) |
 
@@ -72,7 +72,8 @@ There is no analytics SDK or mobile notification permission.
 | Module | Purpose |
 |---|---|
 | `core/config.py` | `Settings` - the four env vars above |
-| `core/hub.py` | `HubClient` (`pull`/`insert`/`push`/revision-checked `patch` against the soma hub), `imported_from` (provenance edge), `now_iso` |
+| `core/hub.py` | `CachedHub` (every read from the poller's cached copy, kept current with `table_pull`; known edge IDs; write passthrough that marks the table for re-read), `HubClient` (`post`/`insert`/`push`/revision-checked `patch`), `load_state`/`save_state` (gzip JSON in the Volume), `imported_from`, `now_iso` |
+| `core/table_pull.py` | Soma's incremental table-pull helper, vendored verbatim - update by re-copying from the soma repo, never edit |
 | `core/tmdb.py` | TMDB show/season lookups -> `tv_episodes` rows |
 | `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows |
 | `core/feeds.py` | RSS, link scraping, Bluesky and Chrome dispatch -> `articles` rows |
@@ -83,6 +84,17 @@ There is no analytics SDK or mobile notification permission.
 
 ## Rules the poller follows
 
+- **Reads never walk whole tables.** `CachedHub` holds the six tables the poller
+  reads (`READS` columns plus `id`, `hub_at`, `deleted_at`, tombstones kept) in
+  the Modal Volume `media-center-state` (`/state/hub-cache.json.gz`). Each run
+  starts with one `/v1/cursor` round for all of them; afterwards only a table
+  the run wrote (insert, push or patch) is read again, incrementally, before
+  its next use. `run_daily` saves the state after every kind. Known provenance
+  edge IDs persist beside the rows and grow from insert acknowledgments
+  (`inserted` and `existing`); a kind with none saved reads only its
+  `<source table>:` ID range of `provenance` once. A missing, unreadable or
+  other-endpoint state file means one full read, never an error. A new read
+  column goes into `READS`, which re-reads that table in full once.
 - **Catalog every tracked source regardless of follow or user status.**
   `follow` only gates the reader's feed. Known items are never reinitialized;
   ingestion preserves user status, watched/read dates, notes and tags.
@@ -229,8 +241,10 @@ Chrome ingestion requires `chrome` on `feeds.fetch` and the same optional
 JSON `articles.content` field.
 Provision these catalog properties through the installed Soma interface
 before activating a source.
-Provenance reconciliation additionally reads `provenance` IDs and live
-item parent relationships, using the same hub pull endpoint and scoped token.
+All reads use `POST /v1/cursor` and batched `POST /v1/rows/pull` through the
+same scoped token. Provenance reconciliation reads live item parent
+relationships from the cached copy and `provenance` IDs only as the
+`<source table>:` ID range when no known edges are saved.
 Table schemas and conventions are documented in
 the `soma-map` skill - read it before adding a column or a new source table.
 

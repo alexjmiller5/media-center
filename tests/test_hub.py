@@ -16,31 +16,22 @@ def test_now_iso_is_utc_with_millis():
     assert s.endswith("Z") and len(s) == 24 and s[19] == "."
 
 
-def test_pull_requests_deleted_at_and_drops_deleted_rows():
+def test_post_sends_the_token_and_raises_on_http_errors():
     seen = {}
 
     def handler(request):
+        seen["url"], seen["headers"] = str(request.url), request.headers
         seen["body"] = json.loads(request.content)
-        seen["headers"] = request.headers
-        return httpx.Response(
-            200,
-            json={
-                "rows": [
-                    {"id": "a", "follow": 1, "deleted_at": None},
-                    {"id": "b", "follow": 1, "deleted_at": "2026-01-01T00:00:00.000Z"},
-                ]
-            },
-        )
+        return httpx.Response(200 if seen["body"] else 503, json={"ok": 1})
 
-    rows = make_client(handler).pull("youtube_channels", ["id", "follow"])
-    assert [r["id"] for r in rows] == ["a"]
-    assert seen["body"] == {
-        "table": "youtube_channels",
-        "columns": ["id", "follow", "deleted_at"],
-        "since": "",
-    }
+    client = make_client(handler)
+    assert client.url == "https://hub.example"
+    assert client.post("/v1/cursor", {"tables": ["feeds"]}) == {"ok": 1}
+    assert seen["url"] == "https://hub.example/v1/cursor"
     assert seen["headers"]["authorization"] == "Bearer lt_test"
     assert seen["headers"]["user-agent"].startswith("media-center/")
+    with pytest.raises(httpx.HTTPStatusError):
+        client.post("/v1/cursor", {})
 
 
 def test_push_sends_sorted_column_union_and_returns_result():

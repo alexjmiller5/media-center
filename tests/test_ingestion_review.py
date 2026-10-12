@@ -6,9 +6,10 @@ import json
 import httpx
 import pytest
 import structlog.testing
+from fakehub import hub_reads
 
 from core import pipeline
-from core.hub import HubClient
+from core.hub import CachedHub, HubClient
 from test_pipeline import FakeHub, http_for
 
 
@@ -26,8 +27,9 @@ def test_failed_article_chunk_recovers_before_overlapping_source(
             {"id": source, "fetch": "scrape:links", "scrape_pattern": "/post/"} for source in (a, b)
         ]
     }
-    calls, fetched, writes = 0, [], []
+    calls, fetched, writes, failed = 0, [], [], []
     saved = {}
+    reads = hub_reads(state)
     monkeypatch.setattr(
         "core.feeds.now_iso",
         iter(["2026-09-01T00:00:00.000Z", "2026-09-01T00:00:02.000Z"]).__next__,
@@ -41,22 +43,13 @@ def test_failed_article_chunk_recovers_before_overlapping_source(
             return httpx.Response(
                 200, text="".join(f'<a href="{ids[i]}">Post {i}</a>' for i in selected)
             )
+        if recovery_fails and calls == 2 and request.url.path == "/v1/cursor" and not failed:
+            failed.append(request)  # only the recovery read; provenance repair reads again
+            return httpx.Response(503)
+        if (read := reads(request)) is not None:
+            return read
         body = json.loads(request.content)
         table = body["table"]
-        if request.url.path.endswith("/pull"):
-            if (
-                recovery_fails
-                and calls == 2
-                and table == "articles"
-                and "feed_id" not in body["columns"]
-            ):
-                return httpx.Response(503)
-            return httpx.Response(
-                200,
-                json={
-                    "rows": [{c: r.get(c) for c in body["columns"]} for r in state.get(table, [])]
-                },
-            )
         assert request.url.path.endswith("/insert")
         writes.append(copy.deepcopy(body))
         rows, rejected = body["rows"], []
@@ -95,7 +88,9 @@ def test_failed_article_chunk_recovers_before_overlapping_source(
         )
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
-        result = pipeline.sync_feeds(HubClient("https://hub.example", "synthetic", http), http)
+        result = pipeline.sync_feeds(
+            CachedHub(HubClient("https://hub.example", "synthetic", http)), http
+        )
     assert result == {
         "feeds": 2,
         "articles": 199 if recovery_fails else 201 - int(committed),

@@ -105,6 +105,14 @@ acknowledged progress. Provenance repair reads stored parent relationships
 and creates missing edges even when upstream no longer lists an item.
 Existing edges and tombstones are preserved; repairs never reset item state.
 
+Hub reads come from the poller's own copy of the tables it reads, kept in its
+Modal Volume `media-center-state` and refreshed with Soma's table-pull helper:
+one `/v1/cursor` request when nothing moved, otherwise only rows that arrived
+since the held cursor. A table the run writes is read again before its next
+use. Known provenance edge IDs are kept too; with none kept, the poller reads
+only the `<source table>:` ID range of `provenance`, once. A lost or unreadable
+Volume file costs one full read (about 110 requests on the current estate).
+
 Bluesky uses canonical DID-based source URLs and public author feeds. It
 retains original posts, quotes and media-only posts, excludes replies and
 reposts, and preserves full records plus available embed payloads in optional
@@ -201,8 +209,8 @@ and `tables:write` (`soma login --profile <id> --name "Media Center poller"
 `soma login --claim pending.json --wait`) and put the printed token in the
 `SOMA_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
 `SOMA_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`. Per-table grants cannot
-replace the broad pair: the poller's provenance recovery reads `provenance`,
-which no table-scoped read grant can name.
+replace the broad pair: the poller's provenance repair reads its `provenance`
+ID range, which no table-scoped read grant can name.
 
 Other one-time steps that cannot be codified:
 
@@ -211,8 +219,8 @@ Other one-time steps that cannot be codified:
 ## Bring your own hub
 
 This service is agnostic to which soma hub it talks to - any endpoint
-implementing `/v1/rows/pull`, `/v1/rows/insert`, `/v1/rows/push` and
-`/v1/rows/patch` (see `src/core/hub.py`)
+implementing `/v1/cursor`, batched `/v1/rows/pull`, `/v1/rows/insert`,
+`/v1/rows/push` and `/v1/rows/patch` (see `src/core/hub.py`)
 works, as long as it has these tables:
 
 | Table | Role |
@@ -223,7 +231,7 @@ works, as long as it has these tables:
 | `youtube_videos` | written - uploaded video rows |
 | `feeds` | source list - RSS/scrape/Bluesky/Chrome sources; `fetch = "x"` rows are skipped |
 | `articles` | written - feed/scrape/Bluesky articles and Chrome consumer feature cards |
-| `provenance` | read and written - missing source relationships repaired from live stored items |
+| `provenance` | written - missing source relationships repaired from live stored items; read only as this service's edge-ID range when its cache holds none |
 
 `POST /v1/rows/insert` accepts the same `{table, columns, rows}` envelope
 as push, atomically leaves existing IDs (including tombstones) untouched,

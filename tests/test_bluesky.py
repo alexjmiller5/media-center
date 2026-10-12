@@ -7,8 +7,9 @@ import httpx
 import pytest
 import structlog.testing
 
+from fakehub import hub_reads
 from core import feeds, pipeline
-from core.hub import HubClient
+from core.hub import CachedHub, HubClient
 
 DID = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"
 OTHER_DID = "did:plc:bbbbbbbbbbbbbbbbbbbbbbbb"
@@ -138,6 +139,7 @@ def test_bluesky_sync_preserves_user_state_tombstones_and_retries(reject_first):
     pushed = []
     handle = "before.invalid"
     reject = reject_first
+    reads = hub_reads(state)
 
     def handler(request):
         if request.url.host == "public.api.bsky.app":
@@ -148,18 +150,10 @@ def test_bluesky_sync_preserves_user_state_tombstones_and_retries(reject_first):
                     "feed": [post(key, handle=handle) for key in ("read", "deleted", "new", "new")]
                 },
             )
+        if (read := reads(request)) is not None:
+            return read
         body = json.loads(request.content)
         table = body["table"]
-        if request.url.path == "/v1/rows/pull":
-            return httpx.Response(
-                200,
-                json={
-                    "rows": [
-                        {col: row.get(col) for col in body["columns"]}
-                        for row in state.get(table, [])
-                    ]
-                },
-            )
         assert request.url.path == "/v1/rows/insert"
         pushed.append(body)
         rejected, inserted, existing_ids = [], [], []
@@ -181,7 +175,7 @@ def test_bluesky_sync_preserves_user_state_tombstones_and_retries(reject_first):
         httpx.Client(transport=httpx.MockTransport(handler)) as http,
         structlog.testing.capture_logs() as logs,
     ):
-        hub = HubClient("https://hub.example", "test-token", http)
+        hub = CachedHub(HubClient("https://hub.example", "test-token", http))
         assert pipeline.sync_feeds(hub, http) == {
             "feeds": 1,
             "articles": 0 if reject else 1,
@@ -285,23 +279,17 @@ def test_bluesky_rejects_malformed_post_uri(uri):
 )
 def test_bluesky_failed_walk_is_counted_safe_and_writes_no_partial_history(problem):
     pushes = []
-    stored = {}
+    stored = {"feeds": [SOURCE, {"id": "https://rss.example/feed", "fetch": "rss"}]}
+    reads = hub_reads(stored)
     requests = 0
     private = "SYNTHETIC-PRIVATE-PAYLOAD"
 
     def handler(request):
         nonlocal requests
         if request.url.host == "hub.example":
+            if (read := reads(request)) is not None:
+                return read
             body = json.loads(request.content)
-            if request.url.path.endswith("pull"):
-                return httpx.Response(
-                    200,
-                    json={
-                        "rows": [SOURCE, {"id": "https://rss.example/feed", "fetch": "rss"}]
-                        if body["table"] == "feeds"
-                        else stored.get(body["table"], [])
-                    },
-                )
             assert request.url.path == "/v1/rows/insert"
             pushes.append(body)
             stored.setdefault(body["table"], []).extend(body["rows"])
@@ -350,7 +338,8 @@ def test_bluesky_failed_walk_is_counted_safe_and_writes_no_partial_history(probl
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         with structlog.testing.capture_logs() as logs:
-            result = pipeline.sync_feeds(HubClient("https://hub.example", "test-token", http), http)
+            hub = CachedHub(HubClient("https://hub.example", "test-token", http))
+            result = pipeline.sync_feeds(hub, http)
     assert requests == (3 if problem == "cursor-cycle" else 2)
     assert result == {"feeds": 2, "articles": 1, "failed": 1, "rejected": 0}
     assert len(pushes) == 2  # Only the independent RSS source and its provenance.

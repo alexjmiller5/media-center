@@ -5,9 +5,10 @@ import json
 
 import httpx
 import pytest
+from fakehub import hub_reads
 
 from core import pipeline
-from core.hub import HubClient
+from core.hub import CachedHub, HubClient
 
 CASES = [
     ("feeds", "articles", "feed_id", "articles"),
@@ -52,8 +53,8 @@ def upstream(request, item_id):
 
 
 def sync(source_table, http):
-    # A fresh client every time simulates a new process using only persisted state.
-    hub = HubClient("https://hub.example", "synthetic-token", http)
+    # A fresh client and an empty cache simulate a new process whose saved cache was lost.
+    hub = CachedHub(HubClient("https://hub.example", "synthetic-token", http))
     if source_table == "feeds":
         return pipeline.sync_feeds(hub, http)
     fn = pipeline.sync_tv if source_table == "tv_shows" else pipeline.sync_youtube
@@ -61,21 +62,15 @@ def sync(source_table, http):
 
 
 def transport(state, item_id, intercept, pushes, paths=None):
+    reads = hub_reads(state)
+
     def handler(request):
         if request.url.host != "hub.example":
             return httpx.Response(200, json=upstream(request, item_id))
+        if (read := reads(request)) is not None:
+            return read
         body = json.loads(request.content)
         table = body["table"]
-        if request.url.path.endswith("pull"):
-            return httpx.Response(
-                200,
-                json={
-                    "rows": [
-                        {col: row.get(col) for col in body["columns"]}
-                        for row in state.get(table, [])
-                    ]
-                },
-            )
         path = request.url.path
         assert path in ("/v1/rows/push", "/v1/rows/insert")
         if paths is not None:

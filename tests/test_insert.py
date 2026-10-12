@@ -5,9 +5,10 @@ import json
 
 import httpx
 import pytest
+from fakehub import hub_reads
 
 from core import pipeline
-from core.hub import HubClient
+from core.hub import CachedHub, HubClient
 from test_hub import make_client
 from test_provenance_retry import CASES, setup_source, sync, transport
 
@@ -182,13 +183,15 @@ def test_mixed_insert_acknowledgments_and_duplicate_source_ids_use_only_inserted
     }
     batches = []
 
+    reads = hub_reads(state)
+
     def handler(request):
         if request.url.host != "hub.example":
             return httpx.Response(200, text="".join(f'<a href="{id_}">Item</a>' for id_ in ids * 2))
+        if (read := reads(request)) is not None:
+            return read
         body = json.loads(request.content)
         table = body["table"]
-        if request.url.path.endswith("pull"):
-            return httpx.Response(200, json={"rows": state.get(table, [])})
         assert request.url.path == "/v1/rows/insert"
         rows = body["rows"]
         if table == "articles":
@@ -209,7 +212,9 @@ def test_mixed_insert_acknowledgments_and_duplicate_source_ids_use_only_inserted
         )
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
-        result = pipeline.sync_feeds(HubClient("https://hub.example", "synthetic", http), http)
+        result = pipeline.sync_feeds(
+            CachedHub(HubClient("https://hub.example", "synthetic", http)), http
+        )
     assert result == {"feeds": 2, "articles": 2, "failed": 0, "rejected": violations}
     assert batches == [ids, [ids[2]]]
     edges = {r["to_ref"]: r for r in state["provenance"]}
@@ -227,6 +232,8 @@ def test_request_committing_after_recovery_read_cannot_overwrite_on_overlapping_
     }
     pending, saved, calls = {}, {}, 0
 
+    reads = hub_reads(state)
+
     def handler(request):
         nonlocal calls
         if request.url.host != "hub.example":
@@ -237,10 +244,10 @@ def test_request_committing_after_recovery_read_cannot_overwrite_on_overlapping_
                     saved["deleted_at"] = "2026-09-01T00:00:00.000Z"
                 state["articles"] = [copy.deepcopy(saved)]
             return httpx.Response(200, text=f'<a href="{item_id}">Post</a>')
+        if (read := reads(request)) is not None:
+            return read
         body = json.loads(request.content)
         table, rows = body["table"], body.get("rows", [])
-        if request.url.path.endswith("pull"):
-            return httpx.Response(200, json={"rows": state.get(table, [])})
         assert request.url.path == "/v1/rows/insert"
         if table == "articles":
             calls += 1
@@ -254,7 +261,9 @@ def test_request_committing_after_recovery_read_cannot_overwrite_on_overlapping_
         )
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
-        result = pipeline.sync_feeds(HubClient("https://hub.example", "synthetic", http), http)
+        result = pipeline.sync_feeds(
+            CachedHub(HubClient("https://hub.example", "synthetic", http)), http
+        )
     assert result == {"feeds": 2, "articles": 0, "failed": 1, "rejected": 0}
     assert calls == 2 and state["articles"] == [saved]
     if deleted:
@@ -270,6 +279,8 @@ def test_tv_mixed_new_duplicate_and_refresh_rows_use_separate_write_contracts():
         "tv_episodes": [{"id": "old", "show_id": "source", "title": "TBA", "status": "Finished"}],
     }
     writes = []
+
+    reads = hub_reads(state)
 
     def handler(request):
         if request.url.host == "api.themoviedb.org":
@@ -295,10 +306,10 @@ def test_tv_mixed_new_duplicate_and_refresh_rows_use_separate_write_contracts():
                     },
                 )
             return httpx.Response(200, json={"seasons": [{"season_number": 1}]})
+        if (read := reads(request)) is not None:
+            return read
         body = json.loads(request.content)
         table, rows = body["table"], body.get("rows", [])
-        if request.url.path.endswith("pull"):
-            return httpx.Response(200, json={"rows": state.get(table, [])})
         writes.append((request.url.path, table, copy.deepcopy(rows)))
         if request.url.path.endswith("push"):
             assert table == "tv_episodes" and len(rows) == 1
@@ -314,7 +325,9 @@ def test_tv_mixed_new_duplicate_and_refresh_rows_use_separate_write_contracts():
         )
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
-        result = pipeline.sync_tv(HubClient("https://hub.example", "synthetic", http), http, "key")
+        result = pipeline.sync_tv(
+            CachedHub(HubClient("https://hub.example", "synthetic", http)), http, "key"
+        )
     assert result == {"shows": 1, "episodes": 1, "failed": 0, "rejected": 0}
     assert state["tv_episodes"][0]["status"] == "Finished"
     assert len(state["tv_episodes"]) == 2 and state["tv_episodes"][1]["title"] == "Last"
