@@ -1,8 +1,8 @@
 { lib, stdenvNoCC, fetchurl, unzip
 # Set to the latest published release (the GitHub asset and its SHA256SUMS entry).
-, version ? "0.1.1"
+, version ? "0.1.2"
 , url ? "https://github.com/alexjmiller5/media-center/releases/download/v${version}/MediaCenter-v${version}.zip"
-, hash ? "sha256-D41z94rz5IUBJvbqXQ2DpGWvUrFNZgDwUstb2lAcjwc="
+, hash ? "sha256-EarsozVo+r4R4Im2QjD4bHr6fFUek4U+M1Cy1XIMfHI="
 }:
 stdenvNoCC.mkDerivation {
   pname = "media-center";
