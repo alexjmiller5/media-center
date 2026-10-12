@@ -215,14 +215,12 @@ If notarization times out, rerun only the failed `release` job. After it
 succeeds, set `version` and `hash` in `nix/package.nix` to the published asset
 and run `nix flake check` (module evaluation and bundle preservation).
 
-Then enroll the poller with a Soma profile granting broad `tables:read`
-and `tables:write` (`soma login --profile <id> --name "Media Center poller"
---start pending.json`, approve the printed URL, then
-`soma login --claim pending.json --wait`) and put the printed token in the
-`SOMA_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
-`SOMA_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`. Per-table grants cannot
-replace the broad pair: the poller's provenance repair reads its `provenance`
-ID range, which no table-scoped read grant can name.
+Put `SOMA_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY` in the project's
+`<Project> ENV` item beside the poller's `SOMA_HUB_TOKEN` (enrolled as above).
+The exact profile cannot read `provenance`, so the poller keeps its known edge
+IDs in its Volume state (`hub-cache.json.gz`); if that state is lost, repairs
+of older items pause (counted as failed) until one run with a broad-read
+credential saves it again.
 
 Other one-time steps that cannot be codified:
 
