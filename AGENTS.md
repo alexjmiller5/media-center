@@ -366,7 +366,8 @@ for revocation retries until the hub confirms revocation; they cannot connect. A
 never-approved candidate (revocation answers 401) is kept silently for late-approval
 cleanup; only unconfirmed revocations are reported, with their reason (`cleanupDetail`).
 Revocation requests run in their own task, so SwiftUI cancelling the polling task on a
-state change cannot abandon them; a cancelled poll is retried, never a refusal, and
+state change cannot abandon them; a cancelled poll is retried and a cancelled launch
+restore (the Mac window closed) keeps its credential, neither is a refusal, and
 attaching a new connection likewise runs outside that task. A refused enrollment or
 reconnect records `failure` (failing step plus reason, never a credential), logs it
 through os_log (subsystem `MediaKit`, category `enrollment`) and shows it under the

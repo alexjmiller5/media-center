@@ -181,7 +181,8 @@ public struct PendingApproval: Equatable, Sendable {
     do {
       let reply: CoreSessionReply
       do { reply = try await client.reply(path: "v1/session", method: "GET", body: nil, limit: 65536) }
-      catch let error as URLError where error.code != .cancelled { throw HubError.unavailable }
+      // A cancelled launch (the Mac window closed) is the caller leaving, never a refusal.
+      catch let error as URLError { throw error.code == .cancelled ? CancellationError() : HubError.unavailable }
       let validated = try await validate(reply: reply, credential: credential, transport: client)
       guard current == generation else {
         client.close()

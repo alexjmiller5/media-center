@@ -198,6 +198,19 @@ import Testing
     #expect(store.records.values.map(\.state) == [.active])
   }
 
+  @Test func cancelledRestoreIsNotARefusal() async throws {
+    // Closing the Mac window cancels the launch task; that must never read as a refused credential.
+    let store = MemoryCredentialStore()
+    let fixture = EnrollmentFixture()
+    let first = try session(store, fixture)
+    _ = try first.begin(endpoint: URL(string: "https://example.test")!, name: "Example")
+    await first.poll()
+    let active = try #require(store.records.values.first)
+    fixture.replyError = URLError(.cancelled)
+    await #expect(throws: CancellationError.self) { try await session(store, fixture).restore(active) }
+    #expect(store.records.values.map(\.state) == [.active])
+  }
+
   @Test func credentialRevokedByTheServiceIsForgotten() async throws {
     let store = MemoryCredentialStore()
     let fixture = EnrollmentFixture()

@@ -67,6 +67,7 @@ import Observation
     do {
       guard let credential = try enrollment.storedConnections().first else { return }
       do { try await enrollment.restore(credential); try await attach() }
+      catch is CancellationError { return }  // the launch was abandoned; the credential stays
       catch {
         if error as? HubError == .unavailable, let cached = await snapshots.load(credential: credential) {
           workspace.browseOffline(identity: cached.identity)
