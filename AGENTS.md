@@ -374,3 +374,5 @@ through os_log (subsystem `MediaKit`, category `enrollment`) and shows it under 
 error. Source bindings carry no consumption state, so the service may omit `statuses`.
 Nonsecret connection snapshots allow previously viewed offline pages without
 enabling writes or recovering drafts until session revalidation succeeds.
+
+Ordinary check workflows run on main pushes and pull requests, with superseded runs canceled. Long UI and accessibility suites run only through manual workflow dispatch.

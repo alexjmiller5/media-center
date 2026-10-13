@@ -2,9 +2,15 @@ name: Native checks
 
 on:
   push:
+    branches: [main]
     paths: ["apps/**", "packages/MediaKit/**", "scripts/**", ".github/workflows/native-check.yml", ".github/workflows/build-ios.yml", ".github/workflows/release-macos.yml"]
+  workflow_dispatch:
   pull_request:
     paths: ["apps/**", "packages/MediaKit/**", "scripts/**", ".github/workflows/native-check.yml", ".github/workflows/build-ios.yml", ".github/workflows/release-macos.yml"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -18,7 +24,7 @@ jobs:
       - name: Release Keychain probe compiles
         run: swift build -c release --package-path scripts/keychain-probe --jobs 2
       - name: Signing and release helpers
-        run: for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test; do python3 "scripts/$t.py"; done
+        run: for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test ota_install_test; do python3 "scripts/$t.py"; done
   policy:
     runs-on: ubuntu-latest
     steps:
@@ -48,11 +54,17 @@ jobs:
         run: |
           xcodegen generate --spec apps/macos/project.yml
           xcodegen generate --spec apps/ios/project.yml
+      - name: Build native app on ordinary checks
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          PROJECT_DIR: ${{ matrix.platform == 'macOS' && 'macos' || 'ios' }}
+          DESTINATION: ${{ matrix.platform == 'macOS' && 'platform=macOS' || 'generic/platform=iOS Simulator' }}
+        run: xcodebuild -project "apps/$PROJECT_DIR/MediaCenter.xcodeproj" -scheme MediaCenter -destination "$DESTINATION" -derivedDataPath "$RUNNER_TEMP/native-build" -jobs 2 CODE_SIGNING_ALLOWED=NO build
       - name: Exercise Mac synthetic interactions
-        if: matrix.platform == 'macOS'
+        if: github.event_name == 'workflow_dispatch' && matrix.platform == 'macOS'
         run: xcodebuild -project apps/macos/MediaCenter.xcodeproj -scheme MediaCenter -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/mac-build" -resultBundlePath "$RUNNER_TEMP/mac-normal.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -maximum-test-execution-time-allowance 90 -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - name: Prepare isolated small iPhone
-        if: matrix.platform == 'iOS'
+        if: github.event_name == 'workflow_dispatch' && matrix.platform == 'iOS'
         shell: bash
         run: |
           set -euo pipefail
@@ -63,24 +75,24 @@ jobs:
           xcrun simctl bootstatus "$device" -b
           xcrun simctl ui "$device" content_size large
       - name: Exercise iPhone synthetic interactions
-        if: matrix.platform == 'iOS'
+        if: github.event_name == 'workflow_dispatch' && matrix.platform == 'iOS'
         run: xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-normal.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 90 -maximum-test-execution-time-allowance 90 -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - name: Capture largest Dynamic Type layouts
         # One test walks every screen at AX5 (~95 s on a normal runner); 90 s rounds to a 2 min ceiling.
-        if: always() && matrix.platform == 'iOS' && env.MEDIA_TEST_DEVICE != ''
+        if: always() && github.event_name == 'workflow_dispatch' && matrix.platform == 'iOS' && env.MEDIA_TEST_DEVICE != ''
         env:
           TEST_RUNNER_MEDIA_TEST_AX5: "1"
         run: |
           xcrun simctl ui "$MEDIA_TEST_DEVICE" content_size accessibility-extra-extra-extra-large
           xcodebuild -project apps/ios/MediaCenter.xcodeproj -scheme MediaCenter -destination "platform=iOS Simulator,id=$MEDIA_TEST_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/iphone-ax5.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 240 -maximum-test-execution-time-allowance 240 -only-testing:MediaCenterUITests/MediaCenterUITests/testSyntheticScreenSnapshots -jobs 2 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch'
         with:
           name: synthetic-native-test-results-${{ matrix.platform }}
           path: ${{ runner.temp }}/*.xcresult
           retention-days: 3
       - name: Remove owned iPhone simulator
-        if: always() && matrix.platform == 'iOS' && env.MEDIA_TEST_DEVICE != ''
+        if: always() && github.event_name == 'workflow_dispatch' && matrix.platform == 'iOS' && env.MEDIA_TEST_DEVICE != ''
         run: |
           xcrun simctl shutdown "$MEDIA_TEST_DEVICE" || true
           xcrun simctl delete "$MEDIA_TEST_DEVICE"

@@ -98,9 +98,9 @@ install ipa:
     echo "  cable    plug the phone into the paired Mac, then: $cmd '$artifact'"
     exit 1
 
-# Serve a verified .ipa as a tailnet install page (blocks while serving; OTA_TTL seconds, default 900).
+# Add a verified IPA to the shared tailnet install page; returns immediately, expires after 48 hours.
 ota ipa:
-    ./scripts/ota-install.sh "{{ipa}}"
+    python3 scripts/ota-install.py "{{ipa}}"
 
 # Stream logs from the deployed poller
 logs:

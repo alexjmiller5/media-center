@@ -248,3 +248,5 @@ The hub must validate partial updates against the merged stored row and
 preserve omitted columns.
 Channel flag writes contain only `id`, `backfilled` and `updated_at`; they
 never echo the required user-owned `follow` field.
+
+`just ota` adds the verified IPA to the machine’s shared page at `https://<tailnet name>/install/` and returns immediately. Every app is listed together; a newer build replaces its app’s entry and entries expire after 48 hours. Open the page in Safari on the phone with Tailscale connected and tap Install.
