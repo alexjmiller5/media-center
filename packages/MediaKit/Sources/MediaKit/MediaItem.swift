@@ -71,6 +71,8 @@ public struct MediaItem: Hashable, Codable, Sendable {
   public var isShort: Bool?
   public var url: URL?
   public var imageURL: URL?
+  /// The show's production status from the catalog (TMDB values such as "Returning Series", "Ended").
+  public var seriesStatus: String?
 
   public init(
     identity: MediaIdentity, title: String, source: SourceIdentity? = nil,
@@ -78,7 +80,7 @@ public struct MediaItem: Hashable, Codable, Sendable {
     status: String = "", state: ConsumptionState = .notStarted, saved: Bool = false,
     isDeleted: Bool = false,
     season: Int? = nil, episode: Int? = nil, isShort: Bool? = nil,
-    url: URL? = nil, imageURL: URL? = nil
+    url: URL? = nil, imageURL: URL? = nil, seriesStatus: String? = nil
   ) {
     self.identity = identity
     self.title = title
@@ -94,8 +96,10 @@ public struct MediaItem: Hashable, Codable, Sendable {
     self.isShort = isShort
     self.url = url
     self.imageURL = imageURL
+    self.seriesStatus = seriesStatus
   }
   public var isActive: Bool { state.isActive }
+  public var seriesLabel: SeriesLabel? { TVProgress.seriesLabel(state: state, seriesStatus: seriesStatus) }
 }
 
 public struct MediaSource: Hashable, Codable, Sendable {

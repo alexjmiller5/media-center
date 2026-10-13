@@ -117,3 +117,30 @@ func catalogDaysRemainGregorianWithTheDeviceTimeZone(identifier: Calendar.Identi
     #expect(card?.item.identity == card?.nextEpisode?.identity)
   }
 }
+
+@Test func seriesLabelCombinesTheUsersProgressWithTheShowsProductionStatus() {
+  func label(_ state: ConsumptionState, _ series: String?) -> SeriesLabel? {
+    TVProgress.seriesLabel(state: state, seriesStatus: series)
+  }
+  for series in ["Returning Series", "In Production", "Planned"] {
+    #expect(label(.finished, series) == .init(text: "Caught up, awaiting new season", isQuiet: false))
+    for state in ConsumptionState.allCases where state != .finished {
+      #expect(label(state, series) == nil, "\(state) \(series)")
+    }
+  }
+  #expect(label(.finished, "Ended") == .init(text: "Show ended", isQuiet: false))
+  #expect(label(.finished, "Canceled") == .init(text: "Show canceled", isQuiet: false))
+  for state in ConsumptionState.allCases where state != .finished {
+    #expect(label(state, "Ended") == .init(text: "Ended", isQuiet: true), "\(state)")
+    #expect(label(state, "Canceled") == .init(text: "Canceled", isQuiet: true), "\(state)")
+  }
+  for state in ConsumptionState.allCases {
+    for series in [nil, "", "Pilot", "ended", "Unknown"] as [String?] {
+      #expect(label(state, series) == nil, "\(state) \(series ?? "nil")")
+    }
+  }
+  let show = MediaItem(
+    identity: .init(kind: .tvShow, id: "show-1"), title: "Series", status: "Finished",
+    state: .finished, seriesStatus: "Ended")
+  #expect(show.seriesLabel == .init(text: "Show ended", isQuiet: false))
+}

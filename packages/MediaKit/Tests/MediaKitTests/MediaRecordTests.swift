@@ -68,3 +68,21 @@ private var recordRow: CoreRow {
   try MediaBindings(items: ["youtubeVideo": binding], sources: [:]).validate(
     scopes: scopes, metadata: ["clips": metadata])
 }
+@Test func seriesStatusIsAnOptionalRoleReadOnlyWhenBound() throws {
+  var binding = recordBinding(unit: nil)
+  binding.fields.removeValue(forKey: "duration")
+  binding.fields.removeValue(forKey: "sourceID")
+  var row = recordRow
+  row["production"] = .string("Returning Series")
+  #expect(try MediaRecord(kind: .tvShow, row: row, binding: binding).item.seriesStatus == nil)
+  binding.fields["seriesStatus"] = "production"
+  #expect(
+    try MediaRecord(kind: .tvShow, row: row, binding: binding).item.seriesStatus
+      == "Returning Series")
+  row["production"] = .null
+  #expect(try MediaRecord(kind: .tvShow, row: row, binding: binding).item.seriesStatus == nil)
+  row["production"] = .number(1)
+  #expect(throws: MediaRecordError.invalidField("seriesStatus")) {
+    try MediaRecord(kind: .tvShow, row: row, binding: binding)
+  }
+}

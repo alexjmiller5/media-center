@@ -231,29 +231,38 @@ struct MediaCardView: View {
   let subtitle: String?
   let reasons: Set<FeedReason>
   var body: some View {
-    HStack(alignment: .top, spacing: 18) {
+    // At accessibility sizes the artwork stacks above the text so titles keep a readable width.
+    (textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(alignment: .top, spacing: 18))) {
       if let image = item.imageURL {
+        // Video thumbnails are 16:9; posters and other artwork stay square.
+        let wide = kind == .youtubeVideo
         AsyncImage(url: image) { phase in
           if let image = phase.image { image.resizable().scaledToFill() }
           else { Color.accentColor.opacity(0.08) }
-        }.frame(width: 88, height: 88).clipped().clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
+        }.frame(width: wide ? 128 : 88, height: wide ? 72 : 88).clipped().clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
       }
       VStack(alignment: .leading, spacing: 7) {
         Text(kindLabel(kind)).textCase(.uppercase).font(.caption.weight(.medium)).foregroundStyle(.secondary)
         Text(title).font(.title3.weight(.semibold)).foregroundStyle(.primary).multilineTextAlignment(.leading)
         if let subtitle { Text(subtitle).font(.callout).foregroundStyle(.secondary) }
-        (textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout())) {
-          Text(item.status)
-          if let duration = item.durationMinutes { Text("\(Int(duration.rounded())) min") }
-          if reasons.contains(.saved) { Text("Saved") }
-          if reasons.contains(.newRelease) { Text("New release") }
-        }.font(.caption).foregroundStyle(.secondary)
+        // One wrapping line that breaks between facts, never inside one ("New release" stays whole).
+        Text(facts.map { $0.replacingOccurrences(of: " ", with: "\u{00A0}") }.joined(separator: "   "))
+          .font(.caption).foregroundStyle(.secondary).accessibilityLabel(facts.joined(separator: ", "))
+        if let label = item.seriesLabel, !label.isQuiet { Text(label.text).font(.caption.weight(.semibold)).foregroundStyle(.tint) }
       }
       Spacer(minLength: 0)
     }.padding(20).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).background(.background, in: RoundedRectangle(cornerRadius: 14))
       .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.08)))
   }
- }
+  private var facts: [String] {
+    var facts = [item.status]
+    if let duration = item.durationMinutes { facts.append("\(Int(duration.rounded())) min") }
+    if reasons.contains(.saved) { facts.append("Saved") }
+    if reasons.contains(.newRelease) { facts.append("New release") }
+    if let label = item.seriesLabel, label.isQuiet { facts.append(label.text) }
+    return facts
+  }
+}
 
 private func kindLabel(_ kind: MediaKind) -> String {
   switch kind { case .article: "Article"; case .youtubeVideo: "Video"; case .tvShow: "TV show"; case .tvEpisode: "TV episode"; case .movie: "Film"; case .podcastEpisode: "Podcast episode" }

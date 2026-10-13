@@ -13,7 +13,7 @@ import structlog
 
 from core import feeds as feeds_mod
 from core import tmdb, youtube
-from core.hub import CachedHub, imported_from, now_iso
+from core.hub import CachedHub, imported_from, legacy_edge_id, now_iso
 
 log = structlog.get_logger()
 CHUNK = 200
@@ -79,8 +79,15 @@ def _sync_provenance(hub, source_table, item_table, parent, new_ids, out) -> Non
             for row in hub.pull(item_table, ["id", parent])
             if row.get(parent)
         ]
-        known = hub.edge_ids(source_table)
-        missing = [edge for edge in edges if edge["id"] not in known]
+        try:
+            known = hub.edge_ids(source_table)
+        except Exception as exc:
+            # A narrow credential cannot read provenance. Without saved edge IDs, only
+            # items this run created are certain to have no edge in either id shape.
+            out["failed"] += 1
+            _log_failure("edge_ids_unavailable", exc, kind=item_table)
+            known, edges = set(), [edge for edge in edges if edge["to_ref"] in new_ids]
+        missing = [e for e in edges if e["id"] not in known and legacy_edge_id(e) not in known]
         for i in range(0, len(missing), CHUNK):
             # Account per chunk so a later HTTP failure cannot hide earlier rejections.
             _insert(hub, "provenance", missing[i : i + CHUNK], out)

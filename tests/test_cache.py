@@ -2,6 +2,7 @@
 
 import copy
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -261,3 +262,15 @@ def test_run_daily_prefetches_every_read_once_and_saves_after_each_kind(mocker):
     assert log[0] == ("/v1/cursor", {"tables": list(READS)})
     assert out["reads"] == {"requests": 2, "rows": 7}
     assert len(saves) == 4 and saves[-1]["rows"]["tv_shows"]["show"]["follow"] == 1
+
+
+def test_poller_profile_reads_exactly_the_cached_columns():
+    """A new READS column needs its grant in the Soma profile, or narrow pulls are refused."""
+    path = Path(__file__).parent.parent / "docs" / "poller-profile.json"
+    ((_, profile),) = json.loads(path.read_text()).items()
+    reads = {s for s in profile["scopes"] if s.startswith("tables:read:")}
+    assert reads == {
+        f"tables:read:{table}:{column}"
+        for table, columns in READS.items()
+        for column in ["id", "hub_at", "deleted_at", *columns]
+    }

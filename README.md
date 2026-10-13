@@ -27,6 +27,8 @@ Replacement devices enroll again. Disconnect revokes that device's access.
   returning or dismissing the review never records consumption.
 - TV cards show the next aired regular episode. Season changes require an exact
   preview and show individual receipts, including partial failures.
+- When the service provides a show's production status, finished shows say
+  whether a new season is coming or the show ended or was canceled.
 - Add waits for a resolved saved receipt. Offline input and unconfirmed changes
   remain device-local drafts; nothing retries automatically.
 - Already-viewed pages support bounded offline browsing. Filter preferences stay
@@ -103,6 +105,9 @@ After a source failure, the poller re-reads stored IDs before processing
 another source. If that recovery fails, it stops that kind while preserving
 acknowledged progress. Provenance repair reads stored parent relationships
 and creates missing edges even when upstream no longer lists an item.
+Edges use Soma's canonical `<from_kind>:<from_ref>:<to_kind>:<to_ref>` ID;
+stored edges in the older `<from_kind>:<from_ref>:<to_ref>` shape count as
+existing, so no item gains a second edge.
 Existing edges and tombstones are preserved; repairs never reset item state.
 
 Hub reads come from the poller's own copy of the tables it reads, kept in its
@@ -110,8 +115,11 @@ Modal Volume `media-center-state` and refreshed with Soma's table-pull helper:
 one `/v1/cursor` request when nothing moved, otherwise only rows that arrived
 since the held cursor. A table the run writes is read again before its next
 use. Known provenance edge IDs are kept too; with none kept, the poller reads
-only the `<source table>:` ID range of `provenance`, once. A lost or unreadable
-Volume file costs one full read (about 110 requests on the current estate).
+only the `<source table>:` ID range of `provenance`, once. That read needs
+broad `tables:read`, which the poller's own credential lacks: without saved
+edge IDs it links only the items it creates and counts the repair as failed.
+A lost or unreadable Volume file costs one full read (about 110 requests on
+the current estate).
 
 Bluesky uses canonical DID-based source URLs and public author feeds. It
 retains original posts, quotes and media-only posts, excludes replies and
@@ -185,6 +193,12 @@ not trigger poller deployment.
 op-project-bootstrap .env.tpl --repo <owner>/<repo>
 ```
 
+The poller's Soma credential is its own: add the profile in
+`docs/poller-profile.json` to the hub's `ENROLLMENT_PROFILES`, enroll with
+`soma login --profile media-center-poller-v2 --name "Media Center poller" --start pending.json`,
+approve the printed link, then pipe `soma login --claim pending.json --wait`
+into the project ENV item's `SOMA_HUB_TOKEN`.
+
 Signing CI reads shared Apple signing material, so the project CI service
 account needs read access to that signing vault as well as the project vault
 (service-account grants are fixed at creation). Native signing also needs:
@@ -203,14 +217,12 @@ If notarization times out, rerun only the failed `release` job. After it
 succeeds, set `version` and `hash` in `nix/package.nix` to the published asset
 and run `nix flake check` (module evaluation and bundle preservation).
 
-Then enroll the poller with a Soma profile granting broad `tables:read`
-and `tables:write` (`soma login --profile <id> --name "Media Center poller"
---start pending.json`, approve the printed URL, then
-`soma login --claim pending.json --wait`) and put the printed token in the
-`SOMA_HUB_TOKEN` field of the project's `<Project> ENV` item alongside
-`SOMA_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY`. Per-table grants cannot
-replace the broad pair: the poller's provenance repair reads its `provenance`
-ID range, which no table-scoped read grant can name.
+Put `SOMA_HUB_URL`, `TMDB_API_KEY` and `YOUTUBE_API_KEY` in the project's
+`<Project> ENV` item beside the poller's `SOMA_HUB_TOKEN` (enrolled as above).
+The exact profile cannot read `provenance`, so the poller keeps its known edge
+IDs in its Volume state (`hub-cache.json.gz`); if that state is lost, repairs
+of older items pause (counted as failed) until one run with a broad-read
+credential saves it again.
 
 Other one-time steps that cannot be codified:
 

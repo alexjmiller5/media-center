@@ -48,7 +48,7 @@ import Testing
         "capabilities": .object([
           "row_api": .string("v1"), "schema": .string("none"), "replica_sync": .bool(false),
           "files": .string("opaque-key-v1"), "subscriptions": .null,
-          "row_query": .string("bounded-v1"),
+          "row_query": .string("bounded-v1"), "conditional_patch": .string("revision-v1"),
         ]),
       ]))
   }
@@ -148,6 +148,27 @@ import Testing
     #expect(session.failure == nil)
     #expect(session.connection?.bindings.sources["youtubeChannel"]?.table == "channels")
     #expect(session.connection?.bindings.sources["youtubeChannel"]?.statuses == [:])
+  }
+  @Test func aRoleThisClientDoesNotReadStillConnectsButGainsNoEditGrant() async throws {
+    // A newer service configuration binds a role ahead of the client that reads it.
+    for (grant, failure) in [
+      (nil, nil), ("tables:patch:items:saved", nil),
+      ("tables:patch:items:future_column", "grants: forbidden"),
+    ] as [(String?, String?)] {
+      let fixture = EnrollmentFixture()
+      fixture.binding.fields["futureRole"] = "future_column"
+      fixture.extraScopes = grant.map { [$0] } ?? []
+      let session = try EnrollmentSession(
+        store: MemoryCredentialStore(),
+        factory: { _, token in
+          fixture.token = token
+          return fixture
+        })
+      _ = try session.begin(endpoint: URL(string: "https://example.test")!, name: "Example")
+      await session.poll()
+      #expect(session.state == (failure == nil ? .connected : .failed), "\(grant ?? "read only")")
+      #expect(session.failure == failure)
+    }
   }
   @Test func refusedEnrollmentExplainsTheFailingStep() async throws {
     let store = MemoryCredentialStore()

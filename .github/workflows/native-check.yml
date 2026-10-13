@@ -24,7 +24,7 @@ jobs:
       - name: Release Keychain probe compiles
         run: swift build -c release --package-path scripts/keychain-probe --jobs 2
       - name: Signing and release helpers
-        run: for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test ota_install_test; do python3 "scripts/$t.py"; done
+        run: for t in sign_ios_test ios_workflow_test macos_release_test verify_macos_signing_test ota_install_test; do python3 -B "scripts/$t.py"; done
   policy:
     runs-on: ubuntu-latest
     steps:

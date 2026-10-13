@@ -42,7 +42,7 @@ public struct MediaRecord: Codable, Equatable, Sendable {
       isDeleted: try reader.text("deletedAt") != nil,
       season: try reader.integer("season"), episode: try reader.integer("episode"),
       isShort: try reader.boolean("isShort"), url: try reader.webURL("url"),
-      imageURL: try reader.webURL("imageURL"))
+      imageURL: try reader.webURL("imageURL"), seriesStatus: try reader.text("seriesStatus"))
     revision = try reader.revision()
     self.row = row
   }

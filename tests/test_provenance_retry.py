@@ -162,7 +162,7 @@ def test_missing_provenance_retries_from_stored_items_after_failure(
         assert state[item_table] == saved
         edges = state.get("provenance", [])
         assert len(edges) == 1
-        assert edges[0]["id"] == f"{source_table}:{source['id']}:{item_id}"
+        assert edges[0]["id"] == f"{source_table}:{source['id']}:{item_table}:{item_id}"
         assert edges[0]["from_ref"] == saved[0][parent]
         assert edges[0]["to_ref"] == item_id
         assert edges[0]["rel"] == "imported_from"
@@ -179,8 +179,9 @@ def test_missing_provenance_retries_from_stored_items_after_failure(
 
 @pytest.mark.parametrize(("source_table", "item_table", "parent", "counter"), CASES)
 @pytest.mark.parametrize("deleted", [False, True])
+@pytest.mark.parametrize("canonical", [False, True])
 def test_repair_uses_stored_parent_and_preserves_items_and_existing_edges(
-    source_table, item_table, parent, counter, deleted
+    source_table, item_table, parent, counter, deleted, canonical
 ):
     source, item_id = setup_source(source_table)
     owner = "https://owner.example/feed" if source_table == "feeds" else "stored-owner"
@@ -195,7 +196,8 @@ def test_repair_uses_stored_parent_and_preserves_items_and_existing_edges(
         items[0]["deleted_at"] = "2026-09-01T00:00:00.000Z"
     edges = [
         {
-            "id": f"{source_table}:{owner}:{key}",
+            # Edges written before soma's canonical id omit to_kind; both count as existing.
+            "id": f"{source_table}:{owner}:{item_table + ':' if canonical else ''}{key}",
             "from_kind": source_table,
             "from_ref": owner,
             "to_kind": item_table,
@@ -270,3 +272,80 @@ def test_repair_counts_rejection_before_later_chunk_http_failure_and_retries():
     assert len(state["provenance"]) == 201
     assert len(pushes[-1]["rows"]) == 2
     assert all(json.loads(edge["detail"]) == {"created_row": 0} for edge in state["provenance"])
+
+
+def narrow(base):
+    """A credential without broad table reads: soma refuses every provenance read."""
+
+    def handler(request):
+        if request.url.path == "/v1/rows/pull" and any(
+            item["table"] == "provenance" for item in json.loads(request.content)["batch"]
+        ):
+            return httpx.Response(403, json={"error": "insufficient scope"})
+        return base.handle_request(request)
+
+    return httpx.MockTransport(handler)
+
+
+def legacy_state(source_table, item_table, parent):
+    """One older item with an edge in the three-part shape, one older item with none."""
+    source, _ = setup_source(source_table)
+    owner = source["id"]
+    return {
+        source_table: [source],
+        item_table: [{"id": "old-linked", parent: owner}, {"id": "old-unlinked", parent: owner}],
+        "provenance": [
+            {
+                "id": f"{source_table}:{owner}:old-linked",
+                "from_kind": source_table,
+                "from_ref": owner,
+                "to_kind": item_table,
+                "to_ref": "old-linked",
+                "rel": "imported_from",
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(("source_table", "item_table", "parent", "counter"), CASES)
+def test_narrow_credential_without_saved_edges_links_only_items_it_created(
+    source_table, item_table, parent, counter
+):
+    _, item_id = setup_source(source_table)
+    state = legacy_state(source_table, item_table, parent)
+    legacy = copy.deepcopy(state["provenance"])
+    with httpx.Client(transport=narrow(transport(state, item_id, lambda *_: None, []))) as http:
+        out = sync(source_table, http)
+    assert out[counter] == 1 and out["failed"] == 1 and out["rejected"] == 0
+    assert state["provenance"][:1] == legacy
+    owner = legacy[0]["from_ref"]
+    (edge,) = state["provenance"][1:]
+    assert edge["id"] == f"{source_table}:{owner}:{item_table}:{item_id}"
+    assert json.loads(edge["detail"]) == {"created_row": 1}
+
+
+@pytest.mark.parametrize(("source_table", "item_table", "parent", "counter"), CASES)
+def test_saved_edges_let_a_narrow_credential_repair_without_duplicating_legacy_edges(
+    source_table, item_table, parent, counter
+):
+    _, item_id = setup_source(source_table)
+    state = legacy_state(source_table, item_table, parent)
+    with httpx.Client(transport=transport(state, item_id, lambda *_: None, [])) as http:
+        broad = CachedHub(HubClient("https://hub.example", "synthetic-token", http))
+        broad.edge_ids(source_table)
+        saved = copy.deepcopy(broad.state)
+    with httpx.Client(transport=narrow(transport(state, item_id, lambda *_: None, []))) as http:
+        hub = CachedHub(HubClient("https://hub.example", "synthetic-token", http), saved)
+        if source_table == "feeds":
+            out = pipeline.sync_feeds(hub, http)
+        else:
+            fn = pipeline.sync_tv if source_table == "tv_shows" else pipeline.sync_youtube
+            out = fn(hub, http, "synthetic-key")
+    assert out[counter] == 1 and out["failed"] == 0 and out["rejected"] == 0
+    owner = state["provenance"][0]["from_ref"]
+    created = {e["to_ref"]: json.loads(e["detail"]) for e in state["provenance"][1:]}
+    assert created == {"old-unlinked": {"created_row": 0}, item_id: {"created_row": 1}}
+    assert all(
+        e["id"] == f"{source_table}:{owner}:{item_table}:{e['to_ref']}"
+        for e in state["provenance"][1:]
+    )

@@ -184,6 +184,18 @@ import XCTest
     XCTAssertTrue(ui.staticTexts["First light"].waitForExistence(timeout: 10))
     XCTAssertTrue(ui.staticTexts["Second tide"].exists)
   }
+  func testTVShowsShowTheirSeriesStatus() {
+    press("nav.library")
+    for (id, label) in [("show-one", "Caught up, awaiting new season"), ("show-two", "Show ended")] {
+      let row = media("item.tvShow.\(id)")
+      reveal(row)
+      let description = row.label.isEmpty ? (row.value as? String) ?? "" : row.label
+      XCTAssertTrue(description.contains(label), description)
+    }
+    press("item.tvShow.show-one")
+    XCTAssertTrue(ui.staticTexts["media.seriesStatus"].waitForExistence(timeout: 10))
+    XCTAssertEqual(text("media.seriesStatus"), "Caught up, awaiting new season")
+  }
   func testAddRequiresResolvedSavedReceipt() {
     press("media.add")
     let input = ui.textViews["capture.input"]

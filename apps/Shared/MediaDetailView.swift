@@ -25,6 +25,9 @@ struct MediaDetailView: View {
         }
         if let item = library.records[identity]?.item {
           Text(item.status).foregroundStyle(.secondary).accessibilityIdentifier("media.status")
+          if let label = item.seriesLabel {
+            Text(label.text).font(label.isQuiet ? .body : .body.weight(.semibold)).foregroundStyle(label.isQuiet ? Color.secondary : Color.accentColor).accessibilityIdentifier("media.seriesStatus")
+          }
           if let duration = item.durationMinutes { Text("\(Int(duration.rounded())) minutes").foregroundStyle(.secondary) }
           adaptiveRow {
             if let url = item.url {
@@ -89,6 +92,7 @@ struct MediaDetailView: View {
               }
             }.padding(18).background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 12))
           }
+          if library.episodesComplete && library.episodes.isEmpty { Text("No episodes in the catalog yet.").foregroundStyle(.secondary) }
           if !library.episodesComplete { Text("Episode list is incomplete. Bulk changes are unavailable.").foregroundStyle(.secondary) }
           if !library.bulkResults.isEmpty {
             Text("\(library.bulkResults.filter(\.committed).count) of \(library.bulkResults.count) updated").font(.headline)
