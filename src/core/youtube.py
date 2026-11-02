@@ -73,6 +73,14 @@ def uploads(
                     "id": sn["resourceId"]["videoId"],
                     "title": sn.get("title", ""),
                     "published_at": sn.get("publishedAt"),
+                    "thumbnail_url": next(
+                        (
+                            sn["thumbnails"][size]["url"]
+                            for size in ("maxres", "standard", "high", "medium", "default")
+                            if sn.get("thumbnails", {}).get(size, {}).get("url")
+                        ),
+                        None,
+                    ),
                 }
             )
         token = data.get("nextPageToken")
@@ -149,7 +157,8 @@ def video_rows(channel_id: str, videos: list[dict], durations: dict[str, int]) -
                 "title": v["title"],
                 "published_at": to_hub_datetime(v.get("published_at")),
                 "duration_s": d,
-                "thumbnail_url": f"https://i.ytimg.com/vi/{v['id']}/hqdefault.jpg",
+                "thumbnail_url": v.get("thumbnail_url")
+                or f"https://i.ytimg.com/vi/{v['id']}/hqdefault.jpg",
                 "is_short": 1 if d is not None and d <= SHORT_MAX_S else 0,
                 "status": "Not Started",
                 "updated_at": stamp,

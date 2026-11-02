@@ -212,3 +212,44 @@ def test_durations_rejects_malformed_nonempty_value():
     )
     with pytest.raises(ValueError):
         youtube.durations(["invalid"], "KEY", http)
+
+
+def test_ingestion_uses_the_best_thumbnail_actually_advertised_by_youtube():
+    playlist = {
+        "items": [
+            {
+                "snippet": {
+                    "resourceId": {"videoId": "abcdefghijk"},
+                    "title": "Example",
+                    "thumbnails": {
+                        "default": {"url": "https://i.ytimg.com/vi/abcdefghijk/default.jpg"},
+                        "high": {"url": "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg"},
+                        "maxres": {"url": "https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg"},
+                    },
+                }
+            }
+        ]
+    }
+    http = route([("/playlistItems?", playlist)])
+    videos = youtube.uploads("UUexample", "KEY", http)
+    row = youtube.video_rows("UCexample", videos, {})[0]
+    assert row["thumbnail_url"] == "https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg"
+
+
+def test_ingestion_uses_advertised_lower_resolution_without_guessing_maxres():
+    playlist = {
+        "items": [
+            {
+                "snippet": {
+                    "resourceId": {"videoId": "abcdefghijk"},
+                    "title": "Example",
+                    "thumbnails": {
+                        "medium": {"url": "https://i.ytimg.com/vi/abcdefghijk/mqdefault.jpg"}
+                    },
+                }
+            }
+        ]
+    }
+    http = route([("/playlistItems?", playlist)])
+    row = youtube.video_rows("UCexample", youtube.uploads("UUexample", "KEY", http), {})[0]
+    assert row["thumbnail_url"] == "https://i.ytimg.com/vi/abcdefghijk/mqdefault.jpg"

@@ -110,6 +110,9 @@ There is no analytics SDK or mobile notification permission.
   runtimes never clear existing values. These sparse patches contain only
   changed source facts plus `id`/`updated_at`, never parent, season/episode,
   user fields or `deleted_at`. Refreshes do not count as new episodes.
+- YouTube thumbnail URLs use the highest resolution advertised in the uploads
+  API response (maxres, standard, high, medium, default). Only responses without
+  a thumbnail fall back to the canonical hqdefault URL.
 - YouTube walks all pages until `backfilled = 1`; deltas then continue through
   mixed pages until a nonempty page contains only ids already in the hub, or
   the playlist ends. Before delta writes, it clears `backfilled`; it restores
