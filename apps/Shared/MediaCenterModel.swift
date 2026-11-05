@@ -71,6 +71,7 @@ import Observation
     starting = true; defer { starting = false }
     #if DEBUG
     if let startupFixture {
+      startupFixture.record("start-entered")
       do { try await startupFixture.prepare() }
       catch { self.error = "Could not prepare synthetic startup."; return }
     }
@@ -101,6 +102,9 @@ import Observation
         workspace.browseOffline(identity: cached.identity)
         library = MediaLibrary(connection: cached, workspace: workspace, defaults: .standard)
         await library?.refresh()
+        #if DEBUG
+        startupFixture?.record("cache-ready", visible: library?.visible.count)
+        #endif
       }
       guard current == connectionGeneration, !Task.isCancelled else { return }
       await enrollment.retryCleanup()

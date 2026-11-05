@@ -24,6 +24,8 @@ import Observation
   func tableMarks(_ tables: [String]) async throws -> [String: TableMark]? { markRequests += 1; if let markError { throw markError }; return marks }
   var rows: [CoreRow] = []
   var queries: [RowQuery] = []
+  var onSessionHeld: (() -> Void)?
+  var onQueryHeld: (() -> Void)?
   var delayQuery = false
   var pendingQuery: CheckedContinuation<RowPage, any Error>?
   var pendingReply: CheckedContinuation<CoreSessionReply, any Error>?
@@ -77,7 +79,7 @@ import Observation
     }
     replyCount += 1
     if let replyError { throw replyError }
-    if delay { return try await withCheckedThrowingContinuation { pendingReply = $0 } }
+    if delay { return try await withCheckedThrowingContinuation { pendingReply = $0; onSessionHeld?() } }
     return try sessionReply()
   }
   func consumerConfig() async throws -> CoreConsumerConfigReply {
@@ -108,7 +110,7 @@ import Observation
   func query(_ request: RowQuery) async throws -> RowPage {
     queries.append(request)
     if let queryError { throw queryError }
-    if delayQuery { return try await withCheckedThrowingContinuation { pendingQuery = $0 } }
+    if delayQuery { return try await withCheckedThrowingContinuation { pendingQuery = $0; onQueryHeld?() } }
     return .init(rows: rows, nextCursor: nextCursor)
   }
   func patch(_ edit: ConditionalEdit) async throws -> PatchReceipt { throw HubError.forbidden }
@@ -120,11 +122,49 @@ import Observation
 }
 
 /// In-memory enrollment and synthetic cached pages for the real startup path. No network or Keychain.
-@MainActor public final class SyntheticStartupFixture {
+@Observable @MainActor public final class SyntheticStartupFixture {
   private let store = MemoryCredentialStore()
   private let transport = EnrollmentFixture()
   private let directory: URL
   private var prepared = false
+  public struct Event: Codable, Sendable {
+    public let name: String
+    public let uptime: Double
+    public let visible: Int?
+    public let queries: Int
+  }
+  public private(set) var events: [Event] = []
+  public private(set) var receiptError: String?
+  public var receiptURL: URL { directory.appendingPathComponent("StartupReceipt.json") }
+  public var canHoldRefresh: Bool { !events.contains(where: { $0.name == "refresh-requested" }) }
+  public var waitingForRefresh: Bool { transport.pendingQuery != nil }
+  public var readiness: String { (events.last?.name ?? "initializing") + " queries=\(queries.count)" }
+  /// View-mounted receipts are not GPU first-paint timestamps; all events use system uptime.
+  public func record(_ name: String, visible: Int? = nil) {
+    events = Array((events + [Event(name: name, uptime: ProcessInfo.processInfo.systemUptime, visible: visible, queries: queries.count)]).suffix(32))
+    do {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      try JSONEncoder().encode(events).write(to: receiptURL, options: .atomic)
+      try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: receiptURL.path)
+    } catch { receiptError = "Synthetic receipt unavailable" }
+  }
+  public func refresh(_ library: MediaLibrary) async {
+    guard canHoldRefresh, !waitingForRefresh, !library.loading else { return }
+    transport.rows.append(row("refresh-article", "Refreshed reading"))
+    transport.delayQuery = true
+    transport.onQueryHeld = { [weak self, weak library] in self?.record("refresh-held", visible: library?.visible.count) }
+    defer { transport.onQueryHeld = nil }
+    transport.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: transport.rows.count)]
+    record("refresh-requested", visible: library.visible.count)
+    await library.refresh()
+    record("refresh-completed", visible: library.visible.count)
+  }
+  public func releaseRefresh() {
+    guard let pending = transport.pendingQuery else { return }
+    transport.delayQuery = false; transport.pendingQuery = nil
+    record("refresh-released")
+    pending.resume(returning: .init(rows: transport.rows, nextCursor: nil))
+  }
   public let enrollment: EnrollmentSession
   public var waiting: Bool { transport.pendingReply != nil }
   public var queries: [RowQuery] { transport.queries }
@@ -132,6 +172,7 @@ import Observation
     self.directory = directory
     let transport = self.transport
     enrollment = try EnrollmentSession(store: store, factory: { _, token in transport.token = token; return transport })
+    transport.onSessionHeld = { [weak self] in self?.record("validation-requested") }
   }
   private func row(_ id: String, _ title: String) -> CoreRow {
     ["id": .string(id), "title": .string(title), "status": .string("Unseen"), "saved": .bool(true),
@@ -154,16 +195,21 @@ import Observation
     transport.queries = []
     transport.delay = true
     prepared = true
+    transport.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: 1)]
+    record("cache-seeded")
   }
   public func accept() throws {
     guard let pending = transport.pendingReply else { return }
     transport.rows.append(row("new-article", "New reading"))
+    transport.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: 2)]
+    record("validation-accepted")
     transport.delay = false; transport.pendingReply = nil
     pending.resume(returning: try transport.sessionReply())
   }
   public func deny() {
     guard let pending = transport.pendingReply else { return }
     transport.delay = false; transport.pendingReply = nil
+    record("validation-denied")
     pending.resume(throwing: HubError.revoked)
   }
 }

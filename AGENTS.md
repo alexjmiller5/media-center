@@ -14,7 +14,12 @@ Debug-only and uses an isolated test directory. `--synthetic-startup --test-id <
 seeds a nonsecret cached article and unsent draft, then runs real startup with an
 in-memory scoped enrollment transport held until the debug Allow/Deny buttons.
 It never opens Keychain or a network endpoint and refuses a missing/invalid UUID.
-Ordinary `--synthetic` remains the connected browsing fixture. Release clients obtain role
+Ordinary `--synthetic` remains the connected browsing fixture. The startup fixture
+provides one held refresh/release, stable `startup.fixture.*` readiness controls,
+and a bounded nonsecret `StartupReceipt.json` in its isolated test directory.
+Receipts use system uptime, query/visible counts and fixed lifecycle names;
+view-ready events describe SwiftUI callbacks, never GPU first-paint timing.
+The fixture's mark/count pairs exercise changed-window and quiet cursor reads. Release clients obtain role
 bindings, catalog metadata and status choices through their scoped Soma
 consumer connection. They never hold poller or operator credentials.
 

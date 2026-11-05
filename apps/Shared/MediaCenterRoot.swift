@@ -39,12 +39,39 @@ struct MediaCenterRoot: View {
       }
     }.overlay(alignment: .bottomTrailing) {
       #if DEBUG
-      if let fixture = model.startupFixture, fixture.waiting {
-        HStack {
-          Button("Allow synthetic session") {
-            do { try fixture.accept() } catch { model.error = "Synthetic session failed." }
-          }.accessibilityIdentifier("startup.fixture.allow")
-          Button("Deny synthetic session") { fixture.deny() }.accessibilityIdentifier("startup.fixture.deny")
+      if let fixture = model.startupFixture {
+        VStack(alignment: .trailing) {
+          Text(fixture.receiptError ?? fixture.readiness).font(.caption.monospaced())
+            .accessibilityIdentifier("startup.fixture.readiness")
+            .onAppear {
+              if model.workspace.isBrowsingSnapshot, let count = model.library?.visible.count, count > 0,
+                !fixture.events.contains(where: { $0.name == "cache-view-ready" }) {
+                fixture.record("cache-view-ready", visible: count)
+              }
+            }
+            .onChange(of: model.library?.visible.count) { _, count in
+              if model.workspace.isBrowsingSnapshot, let count, count > 0,
+                !fixture.events.contains(where: { $0.name == "cache-view-ready" }) {
+                fixture.record("cache-view-ready", visible: count)
+              }
+            }
+            .onChange(of: fixture.events.last?.name) { _, event in
+              if event == "refresh-completed" { fixture.record("refresh-view-ready", visible: model.library?.visible.count) }
+            }
+          HStack {
+            if fixture.waiting {
+              Button("Allow synthetic session") {
+                do { try fixture.accept() } catch { model.error = "Synthetic session failed." }
+              }.accessibilityIdentifier("startup.fixture.allow")
+              Button("Deny synthetic session") { fixture.deny() }.accessibilityIdentifier("startup.fixture.deny")
+            } else if let library = model.library, model.workspace.isOnline {
+              if fixture.waitingForRefresh {
+                Button("Release fixture refresh") { fixture.releaseRefresh() }.accessibilityIdentifier("startup.fixture.releaseRefresh")
+              } else {
+                Button("Hold fixture refresh") { Task { await fixture.refresh(library) } }.accessibilityIdentifier("startup.fixture.refresh").disabled(!fixture.canHoldRefresh)
+              }
+            }
+          }
         }.padding()
       }
       #endif

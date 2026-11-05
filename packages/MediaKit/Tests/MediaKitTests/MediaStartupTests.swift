@@ -55,6 +55,49 @@ import Observation
     #expect(fixture.queries.count == 3)
   }
 
+  @Test func fixtureDelayedRefreshRetainsRowsAndPersistsMonotonicReceipt() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try SyntheticStartupFixture(directory: root)
+    let model = MediaCenterModel(enrollment: fixture.enrollment, storageRoot: root)
+    model.startupFixture = fixture
+    let started = ProcessInfo.processInfo.systemUptime
+    let launch = Task { await model.start() }
+    try await waitForValidation(fixture)
+    try fixture.accept(); await launch.value
+    let library = try #require(model.library)
+    let before = library.visible.map(\.identity)
+    let refresh = Task { await fixture.refresh(library) }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    while !fixture.waitingForRefresh && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    try #require(fixture.waitingForRefresh)
+    #expect(library.visible.map(\.identity) == before)
+    #expect(library.loading)
+    fixture.releaseRefresh(); await refresh.value
+    #expect(Set(library.visible.map(\.title)) == ["Cached reading", "New reading", "Refreshed reading"])
+    let receipt = try JSONDecoder().decode([SyntheticStartupFixture.Event].self, from: Data(contentsOf: fixture.receiptURL))
+    let names = receipt.map(\.name)
+    #expect(names.contains("cache-ready"))
+    #expect(names.suffix(4) == ["refresh-requested", "refresh-held", "refresh-released", "refresh-completed"])
+    #expect(receipt.first(where: { $0.name == "refresh-held" })?.visible == 2)
+    #expect(receipt.last?.visible == 3)
+    #expect(zip(receipt, receipt.dropFirst()).allSatisfy { $0.uptime <= $1.uptime })
+    #expect((receipt.first?.uptime ?? 0) >= started)
+    #expect((receipt.last?.uptime ?? 0) > (receipt.first?.uptime ?? 0))
+    let cachedIndex = try #require(names.firstIndex(of: "cache-ready"))
+    let acceptedIndex = try #require(names.firstIndex(of: "validation-accepted"))
+    #expect(cachedIndex < acceptedIndex)
+    let raw = try String(contentsOf: fixture.receiptURL, encoding: .utf8)
+    let token = try #require(fixture.enrollment.storedConnections().first?.token)
+    #expect(!raw.contains(token))
+    #expect((try FileManager.default.attributesOfItem(atPath: fixture.receiptURL.path)[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+    let queryCount = fixture.queries.count
+    await library.refresh()
+    #expect(fixture.queries.count == queryCount) // real quiet cursor path, no row request
+    #expect(!fixture.canHoldRefresh)
+    #expect(fixture.receiptError == nil)
+  }
+
   @Test func developmentFixtureExercisesRealStartupAndBoundedRefresh() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
