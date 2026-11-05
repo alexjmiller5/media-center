@@ -16,6 +16,12 @@ import Observation
   var revision = String(repeating: "a", count: 64)
   var configRevision: String?
   var extraScopes: [String] = []
+  var nextCursor: String?
+  var queryError: HubError?
+  var markError: HubError?
+  var marks: [String: TableMark]?
+  var markRequests = 0
+  func tableMarks(_ tables: [String]) async throws -> [String: TableMark]? { markRequests += 1; if let markError { throw markError }; return marks }
   var rows: [CoreRow] = []
   var queries: [RowQuery] = []
   var delayQuery = false
@@ -101,8 +107,9 @@ import Observation
   }
   func query(_ request: RowQuery) async throws -> RowPage {
     queries.append(request)
+    if let queryError { throw queryError }
     if delayQuery { return try await withCheckedThrowingContinuation { pendingQuery = $0 } }
-    return .init(rows: rows, nextCursor: nil)
+    return .init(rows: rows, nextCursor: nextCursor)
   }
   func patch(_ edit: ConditionalEdit) async throws -> PatchReceipt { throw HubError.forbidden }
   func submitCapture(_ request: CaptureRequest) async throws -> CaptureReceipt {

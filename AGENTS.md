@@ -56,6 +56,13 @@ never change item consumption state. Catalog date-only values are Gregorian;
 calendar comparisons retain the device time zone. A revoked credential or changed enrollment profile on any
 read, edit or capture path clears visible content and cached pages while
 preserving unsent drafts for later validated recovery.
+Refresh reads Soma's scoped table mark/count pairs before querying. Complete first
+query windows may reuse validated in-memory rows for up to 60 seconds only while
+the pair and exact query/projection stay unchanged. Changed filters/time bounds,
+incomplete windows, absent grants, malformed/refused cursors and failed reads fall
+back to bounded queries. Disconnect clears the bounded 50-stamp memo; mutations
+invalidate it. This is cursor invalidation and bounded requery, not row-delta sync
+or a complete replica. No cursor checkpoints or credentials are persisted.
 Refreshing the same section and filters keeps visible cards until its first replacement
 page arrives; a changed section or filter starts a new view. Failed refreshes keep
 existing cards with the incomplete state.

@@ -47,6 +47,16 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
       table: "items", id: "one", values: ["saved": .bool(true)],
       expectedRevision: .init(updatedAt: "2026-01-01T00:00:00.000Z", hubAt: nil))
   }
+  @Test func cursorReadsSupportedMarkAndTieCountAndRejectsMissingCount() async throws {
+    let client = try client()
+    StubProtocol.install { request in
+      #expect(request.url?.path == "/v1/cursor")
+      return (200, Data(#"{"tables":{"items":"2026-01-01T00:00:00.000Z"},"at_mark":{"items":2}}"#.utf8))
+    }
+    #expect(try await client.tableMarks(["items"])?["items"] == .init(value: "2026-01-01T00:00:00.000Z", count: 2))
+    StubProtocol.install { _ in (200, Data(#"{"tables":{"items":"2026-01-01T00:00:00.000Z"},"at_mark":{}}"#.utf8)) }
+    await #expect(throws: HubError.invalidReply) { _ = try await client.tableMarks(["items"]) }
+  }
   @Test func cancelledReadsAreNotOutagesButCancelledWritesStayUncertain() async throws {
     StubProtocol.install { _ in throw URLError(.cancelled) }
     await #expect(throws: CancellationError.self) { _ = try await client().query(query) }

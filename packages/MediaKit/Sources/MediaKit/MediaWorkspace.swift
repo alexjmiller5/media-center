@@ -2,11 +2,20 @@ import Foundation
 import Observation
 
 @MainActor public protocol MediaService: AnyObject {
+  func tableMarks(_ tables: [String]) async throws -> [String: TableMark]?
   func query(_ request: RowQuery) async throws -> RowPage
   func patch(_ edit: ConditionalEdit) async throws -> PatchReceipt
   func submitCapture(_ request: CaptureRequest) async throws -> CaptureReceipt
   func captureReceipt(id: String) async throws -> CaptureReceipt
   func close()
+}
+public struct TableMark: Equatable, Sendable {
+  public let value: String
+  public let count: Int
+  public init(value: String, count: Int) { self.value = value; self.count = count }
+}
+extension MediaService {
+  public func tableMarks(_ tables: [String]) async throws -> [String: TableMark]? { nil }
 }
 extension HubClient: MediaService {}
 
@@ -31,10 +40,20 @@ public enum EditState: Equatable, Sendable {
   @ObservationIgnored private let cache: MediaCache?
   @ObservationIgnored private var service: (any MediaService)?
   @ObservationIgnored private var generation: UInt64 = 0
+  private struct ReadStamp {
+    let query: Data
+    let mark: TableMark
+    let at: Date
+  }
+  @ObservationIgnored private var readStamps: [String: ReadStamp] = [:]
+  @ObservationIgnored private var marks: [String: TableMark] = [:]
+  @ObservationIgnored private var readRound = 0
+  @ObservationIgnored private let clock: () -> Date
   @ObservationIgnored private var sendingCaptures = Set<UUID>()
 
-  public init(drafts: DraftStore, cache: MediaCache? = nil) {
+  public init(drafts: DraftStore, cache: MediaCache? = nil, now: @escaping () -> Date = { Date() }) {
     store = drafts
+    clock = now
     self.cache = cache
   }
 
@@ -55,6 +74,7 @@ public enum EditState: Equatable, Sendable {
   }
   public func disconnect() {
     generation &+= 1
+    marks = [:]; readStamps = [:]; readRound += 1
     service?.close()
     service = nil
     connection = nil
@@ -67,6 +87,21 @@ public enum EditState: Equatable, Sendable {
     cachedPages = []
     sendingCaptures = []
     error = nil
+  }
+  /// Marks invalidate bounded complete query slices; they never imply a replica or a row delta.
+  public func beginRefresh(tables: [String]) async {
+    readRound += 1; marks = [:]
+    guard let service, !tables.isEmpty else { return }
+    let current = generation, round = readRound
+    do {
+      let result = try await service.tableMarks(tables)
+      guard current == generation, round == readRound else { return }
+      marks = result ?? [:]
+    } catch is CancellationError { return }
+    catch {
+      guard current == generation, round == readRound else { return }
+      _ = await handle(error as? HubError ?? .unavailable, generation: current)
+    }
   }
   /// Snapshot browsing has no validated service; reconnecting requires session revalidation.
   public var isBrowsingSnapshot: Bool { connection != nil && service == nil }
@@ -85,12 +120,24 @@ public enum EditState: Equatable, Sendable {
       await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current)
       return
     }
+    let mark = marks[query.table], round = readRound
+    if let mark, let stamp = readStamps[key], stamp.mark == mark, stamp.query == queryData,
+      clock().timeIntervalSince(stamp.at) >= 0, clock().timeIntervalSince(stamp.at) < 60,
+      rows[key]?.nextCursor == nil, rows[key] != nil, !cachedPages.contains(key) {
+      isOnline = true; error = nil
+      return
+    }
+    readStamps[key] = nil
     do {
       let result = try await service.query(query)
       guard current == generation else { return }
       // A successful read on the validated session ends a transient outage.
       isOnline = true
       rows[key] = result
+      if let mark, round == readRound, result.nextCursor == nil, query.cursor == nil {
+        if readStamps.count >= 50, let first = readStamps.keys.first { readStamps[first] = nil }
+        readStamps[key] = ReadStamp(query: queryData, mark: mark, at: clock())
+      }
       cachedPages.remove(key)
       error = nil
       // A disposable cache write failing must not hide a valid network page.
@@ -156,6 +203,7 @@ public enum EditState: Equatable, Sendable {
   public func submit(_ draft: MediaDraft) async {
     guard isOnline, connection != nil, let service, drafts.contains(draft) else { return }
     let current = generation
+    marks = [:]; readStamps = [:]
     switch draft.content {
     case .capture(let input, let intent):
       guard !sendingCaptures.contains(draft.id), captureReceipts[draft.id]?.state != "saved" else {

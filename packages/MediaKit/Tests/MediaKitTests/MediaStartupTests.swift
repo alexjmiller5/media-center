@@ -27,6 +27,34 @@ import Observation
     return (store, fixture, credential, connection)
   }
 
+  @Test func cursorQuietRoundSkipsQueriesAndChangedCountRefreshesBoundedWindow() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, fixture, _, connection) = try await seed(root)
+    let first: CoreRow = ["id": .string("one"), "title": .string("One"), "status": .string("Unseen"), "saved": .bool(true), "updated_at": .string("2026-01-01T00:00:00.000Z"), "hub_at": .null, "deleted_at": .null]
+    fixture.rows = [first]
+    fixture.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: 1)]
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: connection.identity, service: fixture)
+    let library = MediaLibrary(connection: connection, workspace: workspace)
+    await library.refresh()
+    #expect(library.visible.map(\.title) == ["One"])
+    await library.refresh()
+    #expect(fixture.markRequests == 2)
+    #expect(fixture.queries.count == 1)
+    // A newest-mark tie is a change even when the timestamp is unchanged.
+    fixture.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: 2)]
+    var second = first; second["id"] = .string("two"); second["title"] = .string("Two")
+    fixture.rows = [second] // server window refills after the old item leaves it
+    await library.refresh()
+    #expect(library.visible.map(\.title) == ["Two"])
+    #expect(fixture.queries.count == 2)
+    #expect(fixture.queries.allSatisfy { $0.limit == 50 })
+    library.preferences.sort = .oldest
+    await library.refresh()
+    #expect(fixture.queries.count == 3)
+  }
+
   @Test func developmentFixtureExercisesRealStartupAndBoundedRefresh() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

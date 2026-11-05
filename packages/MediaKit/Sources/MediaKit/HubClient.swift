@@ -174,6 +174,25 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
     }
     return reply
   }
+  /// Supported Soma table-arrival marks, not query deltas or a replica cursor.
+  public func tableMarks(_ tables: [String]) async throws -> [String: TableMark]? {
+    struct Input: Encodable { let tables: [String] }
+    struct Reply: Decodable {
+      let tables: [String: String]
+      let at_mark: [String: Int]
+    }
+    guard !tables.isEmpty, tables.count <= 50, Set(tables).count == tables.count else { throw HubError.invalidRequest }
+    let reply: Reply = try await request("v1/cursor", method: "POST", body: JSONEncoder().encode(Input(tables: tables)))
+    guard Set(reply.tables.keys) == Set(tables) else { throw HubError.invalidReply }
+    var result: [String: TableMark] = [:]
+    for table in tables {
+      guard let value = reply.tables[table], value.isEmpty || value.range(of: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"#, options: .regularExpression) != nil,
+        value.isEmpty ? (reply.at_mark[table] ?? 0) == 0 : (reply.at_mark[table] ?? 0) > 0
+      else { throw HubError.invalidReply }
+      result[table] = .init(value: value, count: reply.at_mark[table] ?? 0)
+    }
+    return result
+  }
   public func query(_ query: RowQuery) async throws -> RowPage {
     let normalized: CoreRowsQueryRequest = try policy.invoke("normalizeRowsQuery", query)
     let result: RowPage = try await request(

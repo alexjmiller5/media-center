@@ -72,6 +72,13 @@ public struct BulkEditResult: Identifiable, Sendable {
     message = nil; loading = true
     defer { if generation == current { loading = false } }
     do {
+      let tables = Set((Array(connection.bindings.items.values) + Array(connection.bindings.sources.values)).map(\.table))
+      let eligible = tables.filter { table in
+        connection.session.scopes.contains("tables:read:\(table)") ||
+          connection.session.scopes.contains("tables:read:\(table):hub_at")
+      }.sorted()
+      await workspace.beginRefresh(tables: eligible)
+      guard generation == current else { return }
       try await loadSources(generation: current)
       guard generation == current else { return }
       let streams: [MediaQueryStream]

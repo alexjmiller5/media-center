@@ -47,6 +47,52 @@ import Testing
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root
   }
+  @Test func cursorReuseRequiresCompleteFreshSuccessfulPageAndFallsBackOnRefusal() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    var now = Date(timeIntervalSince1970: 1000)
+    let service = EnrollmentFixture()
+    service.rows = [["id": .string("one")]]
+    service.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: 1)]
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root), now: { now })
+    try await workspace.connect(identity: fixture(), service: service)
+    let query = RowQuery(table: "items", columns: ["id"], limit: 1)
+    await workspace.beginRefresh(tables: ["items"])
+    await workspace.load(query, key: "page")
+    await workspace.beginRefresh(tables: ["items"])
+    await workspace.load(query, key: "page")
+    #expect(service.queries.count == 1)
+    now.addTimeInterval(61) // clock-driven invalidation also covers older invisible purges
+    await workspace.beginRefresh(tables: ["items"])
+    await workspace.load(query, key: "page")
+    #expect(service.queries.count == 2)
+    service.nextCursor = "more"
+    service.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: 2)]
+    await workspace.beginRefresh(tables: ["items"])
+    await workspace.load(query, key: "page")
+    await workspace.beginRefresh(tables: ["items"])
+    await workspace.load(query, key: "page")
+    #expect(service.queries.count == 4) // partial window must be refetched, including refill
+    service.nextCursor = nil; service.queryError = .unavailable
+    await workspace.load(query, key: "page")
+    service.queryError = nil
+    await workspace.beginRefresh(tables: ["items"])
+    await workspace.load(query, key: "page")
+    #expect(service.queries.count == 6) // failed read never checkpoints the current mark
+    service.markError = .forbidden
+    await workspace.beginRefresh(tables: ["items"])
+    await workspace.load(query, key: "page")
+    #expect(service.queries.count == 7)
+    #expect(workspace.isOnline)
+    service.markError = .revoked
+    let draft = MediaDraft(input: "Keep this draft", intent: .save)
+    try await workspace.keep(draft)
+    await workspace.beginRefresh(tables: ["items"])
+    #expect(workspace.connection == nil)
+    #expect(workspace.rows.isEmpty)
+    #expect(try await DraftStore(directory: root).load(connection: fixture()) == [draft])
+  }
+
   @Test func lateReadAfterAccountSwitchCannotReplaceVisibleRows() async throws {
     let root = try root()
     defer { try? FileManager.default.removeItem(at: root) }
