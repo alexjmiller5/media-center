@@ -18,13 +18,14 @@ import Observation
   private let storageRoot: URL
   #if DEBUG
   var synthetic: SyntheticMediaService?
+  var startupFixture: SyntheticStartupFixture?
   #endif
-  init() {
-    let args = ProcessInfo.processInfo.arguments
+  init(arguments: [String] = ProcessInfo.processInfo.arguments) {
+    let args = arguments
     let normal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MediaCenter")
     var root = normal
     #if DEBUG
-    if args.contains("--synthetic"), let index = args.firstIndex(of: "--test-id"), args.indices.contains(index + 1), let id = UUID(uuidString: args[index + 1]) {
+    if (args.contains("--synthetic") || args.contains("--synthetic-startup")), let index = args.firstIndex(of: "--test-id"), args.indices.contains(index + 1), let id = UUID(uuidString: args[index + 1]) {
       root = FileManager.default.temporaryDirectory.appendingPathComponent("MediaCenterTests/" + id.uuidString)
     }
     #endif
@@ -33,6 +34,15 @@ import Observation
     snapshots = ConnectionSnapshotStore(directory: root.appendingPathComponent("Connections"))
     storageRoot = root
     #if DEBUG
+    if args.contains("--synthetic-startup") {
+      guard root != normal else { error = "Synthetic startup requires an isolated test UUID."; return }
+      do {
+        let fixture = try SyntheticStartupFixture(directory: root)
+        startupFixture = fixture
+        enrollment = fixture.enrollment
+      } catch { self.error = "Could not initialize synthetic startup." }
+      return
+    }
     if args.contains("--synthetic") {
       do {
         synthetic = try SyntheticMediaService()
@@ -60,6 +70,10 @@ import Observation
     hasStarted = true
     starting = true; defer { starting = false }
     #if DEBUG
+    if let startupFixture {
+      do { try await startupFixture.prepare() }
+      catch { self.error = "Could not prepare synthetic startup."; return }
+    }
     if let synthetic {
       do {
         try await workspace.connect(identity: synthetic.connection.identity, service: synthetic)

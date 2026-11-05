@@ -10,7 +10,11 @@ Device enrollment uses browser approval and a device-local Keychain credential.
 `apps/ios` and `apps/macos` are XcodeGen platform shells; `apps/Shared`
 contains SwiftUI navigation, enrollment, feed/library/history, direct capture,
 source follows and explicit consumption controls. Synthetic launch data is
-Debug-only and uses an isolated test directory. Release clients obtain role
+Debug-only and uses an isolated test directory. `--synthetic-startup --test-id <uuid>`
+seeds a nonsecret cached article and unsent draft, then runs real startup with an
+in-memory scoped enrollment transport held until the debug Allow/Deny buttons.
+It never opens Keychain or a network endpoint and refuses a missing/invalid UUID.
+Ordinary `--synthetic` remains the connected browsing fixture. Release clients obtain role
 bindings, catalog metadata and status choices through their scoped Soma
 consumer connection. They never hold poller or operator credentials.
 

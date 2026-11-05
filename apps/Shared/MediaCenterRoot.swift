@@ -37,6 +37,17 @@ struct MediaCenterRoot: View {
           if model.starting { ProgressView() }
         }.padding(32).frame(maxWidth: 480).frame(maxWidth: .infinity) }.defaultScrollAnchor(.center)
       }
+    }.overlay(alignment: .bottomTrailing) {
+      #if DEBUG
+      if let fixture = model.startupFixture, fixture.waiting {
+        HStack {
+          Button("Allow synthetic session") {
+            do { try fixture.accept() } catch { model.error = "Synthetic session failed." }
+          }.accessibilityIdentifier("startup.fixture.allow")
+          Button("Deny synthetic session") { fixture.deny() }.accessibilityIdentifier("startup.fixture.deny")
+        }.padding()
+      }
+      #endif
     }.onChange(of: model.workspace.error) { _, error in
       if error == .revoked || error == .profileChanged { Task { await model.disconnect(); model.error = error == .revoked ? "This device’s access was revoked. Reconnect to continue." : "Your media configuration changed. Reconnect to validate access." } }
     }.task { await model.start() }

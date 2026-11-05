@@ -4,6 +4,13 @@ import Observation
 @testable import MediaKit
 
 @Suite @MainActor struct MediaStartupTests {
+  private func waitForValidation(_ fixture: SyntheticStartupFixture) async throws {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    while !fixture.waiting && ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    try #require(fixture.waiting)
+  }
   private func seed(_ root: URL) async throws -> (MemoryCredentialStore, EnrollmentFixture, StoredCredential, MediaConnection) {
     let store = MemoryCredentialStore()
     let fixture = EnrollmentFixture()
@@ -18,6 +25,51 @@ import Observation
       key: "feed:article:2:0:first", connection: connection.identity)
     try await DraftStore(directory: root.appendingPathComponent("Drafts")).save(.init(input: "Unsent capture", intent: .save), connection: connection.identity)
     return (store, fixture, credential, connection)
+  }
+
+  @Test func developmentFixtureExercisesRealStartupAndBoundedRefresh() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try SyntheticStartupFixture(directory: root)
+    let model = MediaCenterModel(enrollment: fixture.enrollment, storageRoot: root)
+    model.startupFixture = fixture
+    let launch = Task { await model.start() }
+    try await waitForValidation(fixture)
+    #expect(model.library?.cards.map(\.title) == ["Cached reading"])
+    #expect(!model.workspace.isOnline)
+    #expect(model.workspace.drafts.isEmpty)
+    #expect(fixture.queries.isEmpty)
+    try fixture.accept()
+    await launch.value
+    #expect(Set(model.library?.cards.map(\.title) ?? []) == ["Cached reading", "New reading"])
+    #expect(model.workspace.isOnline)
+    #expect(fixture.queries.count == 1)
+    #expect(fixture.queries.first?.limit == 50)
+  }
+
+  @Test func syntheticStartupRequiresAnIsolatedUUIDWithoutOpeningSecureStorage() {
+    let model = MediaCenterModel(arguments: ["test", "--synthetic-startup"])
+    #expect(model.enrollment == nil)
+    #expect(model.startupFixture == nil)
+    #expect(model.error == "Synthetic startup requires an isolated test UUID.")
+  }
+
+  @Test func developmentFixtureDenialPurgesCacheAndPreservesDraft() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try SyntheticStartupFixture(directory: root)
+    let model = MediaCenterModel(enrollment: fixture.enrollment, storageRoot: root)
+    model.startupFixture = fixture
+    let launch = Task { await model.start() }
+    try await waitForValidation(fixture)
+    let identity = try #require(model.library?.connection.identity)
+    fixture.deny()
+    await launch.value
+    #expect(model.library == nil)
+    #expect(model.workspace.connection == nil)
+    #expect(await MediaCache(directory: root.appendingPathComponent("Cache")).page(key: "feed:article:2:0:first", connection: identity) == nil)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("Connections").path).isEmpty)
+    #expect(try await DraftStore(directory: root.appendingPathComponent("Drafts")).load(connection: identity).count == 1)
   }
 
   @Test func cachedLaunchShowsReadOnlyContentBeforeSessionReplies() async throws {
