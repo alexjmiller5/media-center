@@ -107,6 +107,8 @@ import XCTest
     XCTAssertTrue(deny.waitForExistence(timeout: 10))
     let tabs = ui.tabBars.firstMatch
     XCTAssertTrue(tabs.waitForExistence(timeout: 10))
+    XCTAssertGreaterThan(tabs.frame.width, 0)
+    XCTAssertGreaterThan(tabs.frame.height, 0)
     XCTAssertTrue(allow.isHittable)
     XCTAssertTrue(deny.isHittable)
     XCTAssertFalse(allow.frame.intersects(tabs.frame), "Fixture controls must reserve space beside the native tab bar")
