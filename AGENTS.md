@@ -52,6 +52,9 @@ never change item consumption state. Catalog date-only values are Gregorian;
 calendar comparisons retain the device time zone. A revoked credential or changed enrollment profile on any
 read, edit or capture path clears visible content and cached pages while
 preserving unsent drafts for later validated recovery.
+Refreshing the same section and filters keeps visible cards until its first replacement
+page arrives; a changed section or filter starts a new view. Failed refreshes keep
+existing cards with the incomplete state.
 Mac lists support native keyboard selection. Explicit Save/Unsave on selected
 items applies independent revision-checked patches and reports each rejected
 item; it never changes consumption or source follows. Unconfigured media types

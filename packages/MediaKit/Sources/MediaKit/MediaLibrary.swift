@@ -37,6 +37,8 @@ public struct BulkEditResult: Identifiable, Sendable {
   @ObservationIgnored private let clock: () -> Date
   @ObservationIgnored private let calendar: Calendar
   @ObservationIgnored private var pager: FeedPager?
+  @ObservationIgnored private var refreshedSection: LibrarySection?
+  @ObservationIgnored private var refreshedPreferences: FeedPreferences?
   @ObservationIgnored private var generation = 0
   @ObservationIgnored private var episodeLoad = UUID()
   public private(set) var episodesShowID: String?
@@ -62,7 +64,12 @@ public struct BulkEditResult: Identifiable, Sendable {
   public func refresh() async {
     generation += 1
     let current = generation
-    pager?.reset(); visible = []; nextEpisodes = []; message = nil; loading = true
+    pager?.reset()
+    if refreshedSection != section || refreshedPreferences != preferences {
+      visible = []; nextEpisodes = []
+    }
+    refreshedSection = section; refreshedPreferences = preferences
+    message = nil; loading = true
     defer { if generation == current { loading = false } }
     do {
       try await loadSources(generation: current)
@@ -101,7 +108,7 @@ public struct BulkEditResult: Identifiable, Sendable {
         for record in decoded { self.records[record.item.identity] = record }
         return ItemPage(items: decoded.map(\.item), nextCursor: page.nextCursor)
       })
-      try await appendPage(generation: current)
+      try await appendPage(generation: current, replacing: true)
     } catch { if generation == current { message = "Could not load media. Reconnect or try refreshing."; incomplete = true } }
   }
   public func loadMore() async {
@@ -111,8 +118,10 @@ public struct BulkEditResult: Identifiable, Sendable {
     do { try await appendPage(generation: current) }
     catch { if current == generation { message = "Could not load the next page. Refresh to restart."; incomplete = true } }
   }
-  private func appendPage(generation: Int) async throws {
+  private func appendPage(generation: Int, replacing: Bool = false) async throws {
     guard let page = try await pager?.loadNext(), generation == self.generation else { return }
+    // Keep the current view while refreshing; replace only after its first page arrives.
+    if replacing { visible = []; nextEpisodes = [] }
     visible.append(contentsOf: page.items); hasMore = page.hasMore; incomplete = page.incomplete || !sourcesComplete
     if section == .feed { try await loadNextEpisodes(generation: generation) }
   }

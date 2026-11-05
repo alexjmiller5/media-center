@@ -3,6 +3,69 @@ import Testing
 @testable import MediaKit
 
 @Suite @MainActor struct MediaLibraryTests {
+  @Test func refreshingKeepsVisibleCardsUntilReplacementArrives() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try PausedLibraryService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.base.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.base.connection, workspace: workspace, now: service.base.now)
+    await library.refresh()
+    let before = library.cards
+    #expect(!before.isEmpty)
+    service.pause = true
+    let refresh = Task { await library.refresh() }
+    while service.pending == nil { await Task.yield() }
+    #expect(library.loading)
+    #expect(library.cards.map(\.identity) == before.map(\.identity))
+    service.pending?.resume(); service.pending = nil
+    await refresh.value
+    #expect(library.cards.map(\.identity) == before.map(\.identity))
+    #expect(!library.loading)
+    #expect(service.base.writeAttempts == 0)
+  }
+
+  @Test func emptyRefreshReplacesOldCardsAndFailedRefreshPreservesThem() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try PausedLibraryService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.base.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.base.connection, workspace: workspace, now: service.base.now)
+    await library.refresh()
+    #expect(!library.visible.isEmpty)
+    service.base.offline = true
+    await library.refresh()
+    #expect(!library.visible.isEmpty)
+    #expect(library.incomplete)
+    #expect(!workspace.isOnline)
+    service.empty = true
+    await library.refresh()
+    #expect(library.visible.isEmpty)
+    #expect(library.cards.isEmpty)
+    #expect(workspace.isOnline)
+    #expect(service.base.writeAttempts == 0)
+  }
+
+  @Test func changedFiltersDoNotKeepCardsFromThePreviousView() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try PausedLibraryService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.base.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.base.connection, workspace: workspace, now: service.base.now)
+    await library.refresh()
+    #expect(!library.visible.isEmpty)
+    library.preferences.includeShorts.toggle()
+    service.pause = true
+    let refresh = Task { await library.refresh() }
+    while service.pending == nil { await Task.yield() }
+    #expect(library.visible.isEmpty)
+    service.pending?.resume(); service.pending = nil
+    await refresh.value
+    #expect(!library.visible.isEmpty)
+  }
+
   @Test func explicitActionsAndPartialBulkReceipts() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -214,4 +277,25 @@ import Testing
     #expect(service.tables["episodes"]?[1]["kept"] == .bool(false))
   }
 
+}
+
+/// Delays a real synthetic read so the regression observes the UI model mid-refresh.
+@MainActor private final class PausedLibraryService: MediaService {
+  let base: SyntheticMediaService
+  var pause = false
+  var empty = false
+  var pending: CheckedContinuation<Void, Never>?
+  init() throws { base = try SyntheticMediaService() }
+  func query(_ request: RowQuery) async throws -> RowPage {
+    if pause {
+      pause = false
+      await withCheckedContinuation { pending = $0 }
+    }
+    if empty { return .init(rows: [], nextCursor: nil) }
+    return try await base.query(request)
+  }
+  func patch(_ edit: ConditionalEdit) async throws -> PatchReceipt { try await base.patch(edit) }
+  func submitCapture(_ request: CaptureRequest) async throws -> CaptureReceipt { try await base.submitCapture(request) }
+  func captureReceipt(id: String) async throws -> CaptureReceipt { try await base.captureReceipt(id: id) }
+  func close() { base.close() }
 }
