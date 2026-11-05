@@ -48,6 +48,7 @@ public enum EditState: Equatable, Sendable {
   @ObservationIgnored private var readStamps: [String: ReadStamp] = [:]
   @ObservationIgnored private var marks: [String: TableMark] = [:]
   @ObservationIgnored private var readRound = 0
+  @ObservationIgnored private var readTickets: [String: UUID] = [:]
   @ObservationIgnored private let clock: () -> Date
   @ObservationIgnored private var sendingCaptures = Set<UUID>()
 
@@ -74,7 +75,7 @@ public enum EditState: Equatable, Sendable {
   }
   public func disconnect() {
     generation &+= 1
-    marks = [:]; readStamps = [:]; readRound += 1
+    marks = [:]; readStamps = [:]; readTickets = [:]; readRound += 1
     service?.close()
     service = nil
     connection = nil
@@ -108,7 +109,10 @@ public enum EditState: Equatable, Sendable {
   /// `cacheKey` must identify the page independently of time-dependent filter values.
   public func load(_ query: RowQuery, key: String, cacheKey stable: String? = nil) async {
     guard let connection else { return }
-    let current = generation
+    let current = generation, round = readRound
+    let ticket = UUID()
+    readTickets[key] = ticket
+    defer { if readTickets[key] == ticket { readTickets[key] = nil } }
     let encoder = JSONEncoder()
     encoder.outputFormatting = .sortedKeys
     guard let queryData = try? encoder.encode(query) else {
@@ -117,10 +121,10 @@ public enum EditState: Equatable, Sendable {
     }
     let cacheKey = stable ?? (key + ":" + ConnectionIdentity.digest(queryData))
     guard let service else {
-      await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current)
+      await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current, round: round, ticket: ticket)
       return
     }
-    let mark = marks[query.table], round = readRound
+    let mark = marks[query.table]
     if let mark, let stamp = readStamps[key], stamp.mark == mark, stamp.query == queryData,
       clock().timeIntervalSince(stamp.at) >= 0, clock().timeIntervalSince(stamp.at) < 60,
       rows[key]?.nextCursor == nil, rows[key] != nil, !cachedPages.contains(key) {
@@ -130,7 +134,7 @@ public enum EditState: Equatable, Sendable {
     readStamps[key] = nil
     do {
       let result = try await service.query(query)
-      guard current == generation else { return }
+      guard current == generation, round == readRound, readTickets[key] == ticket else { return }
       // A successful read on the validated session ends a transient outage.
       isOnline = true
       rows[key] = result
@@ -147,13 +151,13 @@ public enum EditState: Equatable, Sendable {
     } catch is CancellationError {
       return
     } catch {
-      guard current == generation else { return }
+      guard current == generation, round == readRound, readTickets[key] == ticket else { return }
       let reason = error as? HubError ?? .unavailable
       if await handle(reason, generation: current) { return }
       if reason == .unavailable {
         isOnline = false
         self.error = reason
-        await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current)
+        await cached(key: key, cacheKey: cacheKey, connection: connection, generation: current, round: round, ticket: ticket)
       } else {
         rows[key] = nil
         cachedPages.remove(key)
@@ -167,10 +171,10 @@ public enum EditState: Equatable, Sendable {
     isOnline = false
   }
   private func cached(
-    key: String, cacheKey: String, connection: ConnectionIdentity, generation: UInt64
+    key: String, cacheKey: String, connection: ConnectionIdentity, generation: UInt64, round: Int, ticket: UUID
   ) async {
     let page = await cache?.page(key: cacheKey, connection: connection)
-    guard generation == self.generation else { return }
+    guard generation == self.generation, round == readRound, readTickets[key] == ticket else { return }
     if let page {
       rows[key] = .init(rows: page.rows, nextCursor: page.nextCursor)
       cachedPages.insert(key)
@@ -203,7 +207,7 @@ public enum EditState: Equatable, Sendable {
   public func submit(_ draft: MediaDraft) async {
     guard isOnline, connection != nil, let service, drafts.contains(draft) else { return }
     let current = generation
-    marks = [:]; readStamps = [:]
+    marks = [:]; readStamps = [:]; readRound += 1
     switch draft.content {
     case .capture(let input, let intent):
       guard !sendingCaptures.contains(draft.id), captureReceipts[draft.id]?.state != "saved" else {

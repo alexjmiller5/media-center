@@ -61,7 +61,9 @@ query windows may reuse validated in-memory rows for up to 60 seconds only while
 the pair and exact query/projection stay unchanged. Changed filters/time bounds,
 incomplete windows, absent grants, malformed/refused cursors and failed reads fall
 back to bounded queries. Disconnect clears the bounded 50-stamp memo; mutations
-invalidate it. This is cursor invalidation and bounded requery, not row-delta sync
+invalidate it and advance the read epoch. Success, error and cached fallback
+publication require the current refresh round and per-key request ticket, so
+out-of-order replies cannot replace a newer row/memo/cache winner. This is cursor invalidation and bounded requery, not row-delta sync
 or a complete replica. No cursor checkpoints or credentials are persisted.
 Refreshing the same section and filters keeps visible cards until its first replacement
 page arrives; a changed section or filter starts a new view. Failed refreshes keep

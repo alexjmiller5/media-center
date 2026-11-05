@@ -4,6 +4,9 @@ import Testing
 @testable import MediaKit
 
 @MainActor final class DelayedService: MediaService {
+  var queryCount = 0
+  var marks: [String: TableMark]?
+  func tableMarks(_ tables: [String]) async throws -> [String: TableMark]? { marks }
   var queryContinuation: CheckedContinuation<RowPage, any Error>?
   var captureContinuation: CheckedContinuation<CaptureReceipt, any Error>?
   var patchCount = 0
@@ -15,6 +18,7 @@ import Testing
   var delayPatch = false
   var patchContinuation: CheckedContinuation<PatchReceipt, any Error>?
   func query(_ request: RowQuery) async throws -> RowPage {
+    queryCount += 1
     if let queryError { throw queryError }
     return try await withCheckedThrowingContinuation { queryContinuation = $0 }
   }
@@ -47,6 +51,62 @@ import Testing
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root
   }
+  @Test(arguments: [false, true], [false, true])
+  func olderReadCannotReplaceNewerRowsMemoOrCache(newRound: Bool, oldFails: Bool) async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let cache = MediaCache(directory: root.appendingPathComponent("cache"))
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root.appendingPathComponent("drafts")), cache: cache)
+    let service = DelayedService()
+    service.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: 1)]
+    let identity = try fixture()
+    try await workspace.connect(identity: identity, service: service)
+    let query = RowQuery(table: "items", columns: ["id"], limit: 1)
+    await workspace.beginRefresh(tables: ["items"])
+    let old = Task { await workspace.load(query, key: "feed", cacheKey: "feed") }
+    while service.queryContinuation == nil { await Task.yield() }
+    let oldReply = try #require(service.queryContinuation); service.queryContinuation = nil
+    if newRound {
+      service.marks = ["items": .init(value: "2026-01-01T00:00:00.000Z", count: 2)]
+      await workspace.beginRefresh(tables: ["items"])
+    }
+    let fresh = Task { await workspace.load(query, key: "feed", cacheKey: "feed") }
+    while service.queryContinuation == nil { await Task.yield() }
+    service.queryContinuation?.resume(returning: .init(rows: [["id": .string("new")]], nextCursor: nil))
+    service.queryContinuation = nil
+    await fresh.value
+    if oldFails { oldReply.resume(throwing: HubError.unavailable) }
+    else { oldReply.resume(returning: .init(rows: [["id": .string("old")]], nextCursor: nil)) }
+    await old.value
+    #expect(workspace.rows["feed"]?.rows.first?["id"] == .string("new"))
+    #expect(workspace.isOnline)
+    #expect(await cache.page(key: "feed", connection: identity)?.rows.first?["id"] == .string("new"))
+    service.queryError = .forbidden // a missed quiet memo fails immediately instead of hanging
+    await workspace.beginRefresh(tables: ["items"])
+    await workspace.load(query, key: "feed", cacheKey: "feed")
+    #expect(service.queryCount == 2)
+    #expect(workspace.rows["feed"]?.rows.first?["id"] == .string("new"))
+  }
+
+  @Test func mutationInvalidatesPendingReadBeforeItCanPublish() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let cache = MediaCache(directory: root.appendingPathComponent("cache"))
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root.appendingPathComponent("drafts")), cache: cache)
+    let service = DelayedService()
+    let identity = try fixture()
+    try await workspace.connect(identity: identity, service: service)
+    let read = Task { await workspace.load(.init(table: "items", columns: ["id"]), key: "feed", cacheKey: "feed") }
+    while service.queryContinuation == nil { await Task.yield() }
+    let draft = MediaDraft(edit: .init(table: "items", id: "one", values: ["saved": .bool(true)], expectedRevision: .init(updatedAt: "2026-01-01T00:00:00.000Z", hubAt: nil)))
+    try await workspace.keep(draft)
+    await workspace.submit(draft)
+    service.queryContinuation?.resume(returning: .init(rows: [["id": .string("old")]], nextCursor: nil))
+    await read.value
+    #expect(workspace.rows.isEmpty)
+    #expect(await cache.page(key: "feed", connection: identity) == nil)
+  }
+
   @Test func cursorReuseRequiresCompleteFreshSuccessfulPageAndFallsBackOnRefusal() async throws {
     let root = try root()
     defer { try? FileManager.default.removeItem(at: root) }
