@@ -37,7 +37,7 @@ struct MediaCenterRoot: View {
           if model.starting { ProgressView() }
         }.padding(32).frame(maxWidth: 480).frame(maxWidth: .infinity) }.defaultScrollAnchor(.center)
       }
-    }.overlay(alignment: .bottomTrailing) {
+    }.safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) {
       #if DEBUG
       if let fixture = model.startupFixture {
         VStack(alignment: .trailing) {
@@ -58,7 +58,7 @@ struct MediaCenterRoot: View {
             .onChange(of: fixture.events.last?.name) { _, event in
               if event == "refresh-completed" { fixture.record("refresh-view-ready", visible: model.library?.visible.count) }
             }
-          HStack {
+          VStack(alignment: .trailing, spacing: 8) {
             if fixture.waiting {
               Button("Allow synthetic session") {
                 do { try fixture.accept() } catch { model.error = "Synthetic session failed." }
@@ -72,7 +72,7 @@ struct MediaCenterRoot: View {
               }
             }
           }
-        }.padding()
+        }.buttonStyle(.bordered).padding().frame(maxWidth: .infinity, alignment: .trailing).background(.regularMaterial)
       }
       #endif
     }.onChange(of: model.workspace.error) { _, error in

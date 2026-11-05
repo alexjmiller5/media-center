@@ -19,7 +19,9 @@ provides one held refresh/release, stable `startup.fixture.*` readiness controls
 and a bounded nonsecret `StartupReceipt.json` in its isolated test directory.
 Receipts use system uptime, query/visible counts and fixed lifecycle names;
 view-ready events describe SwiftUI callbacks, never GPU first-paint timing.
-The fixture's mark/count pairs exercise changed-window and quiet cursor reads. Release clients obtain role
+The fixture's mark/count pairs exercise changed-window and quiet cursor reads.
+Debug controls occupy a bottom safe-area inset with vertically stacked buttons,
+so they reserve space instead of overlaying the iPhone tab bar. Release clients obtain role
 bindings, catalog metadata and status choices through their scoped Soma
 consumer connection. They never hold poller or operator credentials.
 

@@ -96,6 +96,24 @@ import XCTest
     XCTAssertTrue(ui.buttons["media.add"].waitForExistence(timeout: 10))
   }
   #endif
+  #if os(iOS)
+  func testStartupFixtureControlsDoNotOverlapTheTabBar() {
+    app.terminate()
+    app.launchArguments = ["--synthetic-startup", "--test-id", UUID().uuidString]
+    app.launch()
+    let allow = ui.buttons["startup.fixture.allow"]
+    let deny = ui.buttons["startup.fixture.deny"]
+    XCTAssertTrue(allow.waitForExistence(timeout: 10))
+    XCTAssertTrue(deny.waitForExistence(timeout: 10))
+    let tabs = ui.tabBars.firstMatch
+    XCTAssertTrue(tabs.waitForExistence(timeout: 10))
+    XCTAssertTrue(allow.isHittable)
+    XCTAssertTrue(deny.isHittable)
+    XCTAssertFalse(allow.frame.intersects(tabs.frame), "Fixture controls must reserve space beside the native tab bar")
+    XCTAssertFalse(deny.frame.intersects(tabs.frame), "Fixture controls must reserve space beside the native tab bar")
+    snapshot("startup-fixture-safe-area")
+  }
+  #endif
   func testSyntheticScreenSnapshots() {
     snapshot("feed")
     reveal(media("item.youtubeVideo.video-one"))
