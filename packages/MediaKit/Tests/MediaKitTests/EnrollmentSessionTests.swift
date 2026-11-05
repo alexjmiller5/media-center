@@ -17,6 +17,8 @@ import Testing
   var revision = String(repeating: "a", count: 64)
   var configRevision: String?
   var extraScopes: [String] = []
+  var delayQuery = false
+  var pendingQuery: CheckedContinuation<RowPage, any Error>?
   var pendingReply: CheckedContinuation<CoreSessionReply, any Error>?
   var delay = false
   var delayRevocation = false
@@ -96,7 +98,10 @@ import Testing
           options: column == "status" ? [.init(v: "Unseen"), .init(v: "Done")] : nil)
       })
   }
-  func query(_ request: RowQuery) async throws -> RowPage { .init(rows: [], nextCursor: nil) }
+  func query(_ request: RowQuery) async throws -> RowPage {
+    if delayQuery { return try await withCheckedThrowingContinuation { pendingQuery = $0 } }
+    return .init(rows: [], nextCursor: nil)
+  }
   func patch(_ edit: ConditionalEdit) async throws -> PatchReceipt { throw HubError.forbidden }
   func submitCapture(_ request: CaptureRequest) async throws -> CaptureReceipt {
     throw HubError.forbidden

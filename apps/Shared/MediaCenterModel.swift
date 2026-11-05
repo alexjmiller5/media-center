@@ -8,9 +8,12 @@ import Observation
   var error: String?
   var endpoint = ""
   var starting = false
+  var hasStarted = false
+  private var connectionGeneration = 0
   let workspace: MediaWorkspace
   /// Offline video copies for the validated hub connection; nil without one.
   var offlineVideos: (any OfflineVideoStore)?
+  private let cache: MediaCache
   private let snapshots: ConnectionSnapshotStore
   private let storageRoot: URL
   #if DEBUG
@@ -25,7 +28,8 @@ import Observation
       root = FileManager.default.temporaryDirectory.appendingPathComponent("MediaCenterTests/" + id.uuidString)
     }
     #endif
-    workspace = MediaWorkspace(drafts: DraftStore(directory: root.appendingPathComponent("Drafts")), cache: MediaCache(directory: root.appendingPathComponent("Cache")))
+    cache = MediaCache(directory: root.appendingPathComponent("Cache"))
+    workspace = MediaWorkspace(drafts: DraftStore(directory: root.appendingPathComponent("Drafts")), cache: cache)
     snapshots = ConnectionSnapshotStore(directory: root.appendingPathComponent("Connections"))
     storageRoot = root
     #if DEBUG
@@ -42,8 +46,18 @@ import Observation
     do { enrollment = try EnrollmentSession(store: KeychainCredentialStore(service: Bundle.main.bundleIdentifier ?? "MediaCenter")) }
     catch { self.error = "Secure enrollment is unavailable." }
   }
+  /// Injectable secure session and isolated storage for model integration tests.
+  init(enrollment: EnrollmentSession, storageRoot: URL) {
+    self.enrollment = enrollment
+    self.storageRoot = storageRoot
+    cache = MediaCache(directory: storageRoot.appendingPathComponent("Cache"))
+    workspace = MediaWorkspace(drafts: DraftStore(directory: storageRoot.appendingPathComponent("Drafts")), cache: cache)
+    snapshots = ConnectionSnapshotStore(directory: storageRoot.appendingPathComponent("Connections"))
+  }
   func start() async {
-    guard !starting, library == nil else { return }
+    guard !starting, library == nil || workspace.isBrowsingSnapshot else { return }
+    let current = connectionGeneration
+    hasStarted = true
     starting = true; defer { starting = false }
     #if DEBUG
     if let synthetic {
@@ -63,23 +77,42 @@ import Observation
     }
     #endif
     guard let enrollment else { return }
-    await enrollment.retryCleanup()
     do {
-      guard let credential = try enrollment.storedConnections().first else { return }
+      guard let credential = try enrollment.storedConnections().first else {
+        await enrollment.retryCleanup()
+        return
+      }
+      if library == nil, let cached = await snapshots.load(credential: credential) {
+        guard current == connectionGeneration, !Task.isCancelled else { return }
+        workspace.browseOffline(identity: cached.identity)
+        library = MediaLibrary(connection: cached, workspace: workspace, defaults: .standard)
+        await library?.refresh()
+      }
+      guard current == connectionGeneration, !Task.isCancelled else { return }
+      await enrollment.retryCleanup()
+      guard current == connectionGeneration, !Task.isCancelled else { return }
       do { try await enrollment.restore(credential); try await attach() }
       catch is CancellationError { return }  // the launch was abandoned; the credential stays
       catch {
-        if error as? HubError == .unavailable, let cached = await snapshots.load(credential: credential) {
-          workspace.browseOffline(identity: cached.identity)
-          library = MediaLibrary(connection: cached, workspace: workspace, defaults: .standard)
-          await library?.refresh()
-        } else {
-          // A credential that can no longer connect is revoked, not kept beside a new enrollment.
-          if error as? HubError != .unavailable { await enrollment.forget(credential) }
+        guard current == connectionGeneration else { return }
+        if error as? HubError != .unavailable {
+          await reject(credential)
+          self.error = "Reconnect to validate your access and media configuration."
+        } else if library == nil {
           self.error = "Reconnect to validate your access and media configuration."
         }
       }
     } catch { self.error = "Could not read the device’s secure connection." }
+  }
+  /// A refused session cannot retain content; unsent drafts have their independent store.
+  private func reject(_ credential: StoredCredential) async {
+    let identity = workspace.connection
+    library = nil; offlineVideos = nil; workspace.disconnect()
+    if let identity {
+      await cache.removePages(connection: identity)
+      try? await snapshots.remove(identity: identity)
+    }
+    await enrollment?.forget(credential)
   }
   /// Ends an outage: a connected session retries its reads; a cached snapshot revalidates first.
   func retry() async {
@@ -90,8 +123,14 @@ import Observation
     guard library.workspace.isBrowsingSnapshot else { await library.refresh(); return }
     guard let enrollment, !starting, let credential = try? enrollment.storedConnections().first else { return }
     starting = true; defer { starting = false }
+    let current = connectionGeneration
     do { try await enrollment.restore(credential); try await attach(); error = nil }
-    catch { self.error = error as? HubError == .unavailable ? nil : "Reconnect to validate your access and media configuration." }
+    catch is CancellationError { return }
+    catch {
+      guard current == connectionGeneration else { return }
+      if error as? HubError != .unavailable { await reject(credential) }
+      self.error = error as? HubError == .unavailable ? nil : "Reconnect to validate your access and media configuration."
+    }
   }
   func begin() -> URL? {
     guard let enrollment, let url = URL(string: endpoint) else { error = "Enter your Soma HTTPS address."; return nil }
@@ -113,17 +152,23 @@ import Observation
   }
   private func attach() async throws {
     guard let connection = enrollment?.connection, let service = enrollment?.transport else { return }
+    let current = connectionGeneration
     try await workspace.connect(identity: connection.identity, service: service)
+    guard current == connectionGeneration, workspace.connection == connection.identity else { return }
     if let hub = service as? HubClient {
       offlineVideos = OfflineVideoCache(directory: storageRoot.appendingPathComponent("Offline")) {
         try await hub.downloadFile(key: $0)
       }
     }
+    if library?.connection != connection {
+      library = MediaLibrary(connection: connection, workspace: workspace, defaults: .standard)
+    }
     try? await snapshots.save(connection)
-    library = MediaLibrary(connection: connection, workspace: workspace, defaults: .standard)
+    guard current == connectionGeneration else { return }
     await library?.refresh()
   }
   func disconnect() async {
+    connectionGeneration += 1
     let wasStarting = starting
     starting = true; defer { starting = wasStarting }
     let identity = library?.connection.identity

@@ -40,7 +40,8 @@ public enum EditState: Equatable, Sendable {
 
   /// Caller completes session/config/grant revalidation before connecting or recovering drafts.
   public func connect(identity: ConnectionIdentity, service: any MediaService) async throws {
-    disconnect()
+    // A validated promotion keeps the same snapshot visible while drafts are recovered.
+    if !(isBrowsingSnapshot && self.connection == identity) { disconnect() }
     let current = generation
     let recovered = try await store.load(connection: identity)
     guard current == generation else {

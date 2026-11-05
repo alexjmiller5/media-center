@@ -400,7 +400,12 @@ attaching a new connection likewise runs outside that task. A refused enrollment
 reconnect records `failure` (failing step plus reason, never a credential), logs it
 through os_log (subsystem `MediaKit`, category `enrollment`) and shows it under the
 error. Source bindings carry no consumption state, so the service may omit `statuses`.
-Nonsecret connection snapshots allow previously viewed offline pages without
-enabling writes or recovering drafts until session revalidation succeeds.
+Launch hydrates matching nonsecret connection snapshots and previously viewed cached
+pages before cleanup/session network requests, read-only with no draft recovery.
+Validated promotion preserves the same library and visible connection while refreshing;
+refused validation clears matching content pages and snapshots while retaining drafts.
+The initial root shows loading until secure restore decides between library and enrollment.
+Model integration tests compile the actual shared app model through a source symlink
+in the MediaKit test target; no model copy or native app build is needed.
 
 Ordinary check workflows run on main pushes and pull requests, with superseded runs canceled. Long UI and accessibility suites run only through manual workflow dispatch.

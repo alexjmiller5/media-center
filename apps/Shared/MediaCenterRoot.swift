@@ -7,7 +7,9 @@ struct MediaCenterRoot: View {
   var body: some View {
     Group {
       if let library = model.library, model.workspace.connection == library.connection.identity { MediaLibraryView(model: model, library: library) }
-      else {
+      else if !model.hasStarted || model.starting {
+        ProgressView("Opening media").accessibilityIdentifier("launch.loading")
+      } else {
         // Scrolls so the keyboard and failure details never truncate the connect text.
         ScrollView { VStack(alignment: .leading, spacing: 20) {
           Text("Media Center").font(.largeTitle.bold())
