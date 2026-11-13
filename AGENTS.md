@@ -53,7 +53,10 @@ credential; replacement devices enroll again. Consumer field edits use
 revision-checked sparse patches. Capture submission uses the Soma
 adapter and displays Saved only after its resolved saved receipt.
 Catalog-permitted notes, tags and consumption dates are edited through explicit
-revision-checked patches. Feed filters persist in device-local defaults, scoped
+revision-checked patches. Status-only and bulk finish actions preserve an existing
+consumption date, including null for unknown. The review offers keeping that date,
+explicitly choosing Unknown, or recording a chosen date; no completion action
+invents today without a date choice. Feed filters persist in device-local defaults, scoped
 to the validated connection. Opening media and dismissing a review never changes
 consumption state. The Drafts screen recovers locally preserved captures with
 stable request IDs and offers read-only receipt/current-value checks; it never

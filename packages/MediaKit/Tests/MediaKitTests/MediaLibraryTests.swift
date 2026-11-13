@@ -122,6 +122,27 @@ import Testing
     #expect(service.tables["videos"]?.first?["state"] == .string("Unseen"))
     #expect(!library.cards.contains { $0.identity.kind == .youtubeVideo })
   }
+  @Test func finishWithoutADatePreservesUnknownAndKnownDates() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = try SyntheticMediaService()
+    let workspace = MediaWorkspace(drafts: DraftStore(directory: root))
+    try await workspace.connect(identity: service.connection.identity, service: service)
+    let library = MediaLibrary(connection: service.connection, workspace: workspace, now: service.now)
+    await library.refresh()
+    let video = MediaIdentity(kind: .youtubeVideo, id: "video-one")
+    await library.finish([try #require(library.records[video]?.item)])
+    #expect(service.tables["videos"]?.first?["state"] == .string("Finished"))
+    #expect(service.tables["videos"]?.first?["completed"] == .null)
+    let actual = service.now.addingTimeInterval(-86400 * 90)
+    #expect(await library.setConsumption(video, status: "Finished", date: actual))
+    let known = service.tables["videos"]?.first?["completed"]
+    await library.finish([try #require(library.records[video]?.item)])
+    #expect(service.tables["videos"]?.first?["completed"] == known)
+    #expect(await library.setConsumption(video, status: "Finished", date: nil))
+    #expect(service.tables["videos"]?.first?["completed"] == .null)
+    #expect(service.tables["videos"]?.first?["kept"] == .bool(false))
+  }
   @Test func consumptionStatusAndDateShareOneConditionalPatch() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

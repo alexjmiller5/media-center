@@ -15,6 +15,7 @@ struct MediaDetailView: View {
   @State private var seasonSelection: SeasonSelection?
   @State private var changing = false
   @State private var consumptionDate = Date()
+  @State private var dateChoice = ConsumptionDateChoice.existing
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
@@ -57,7 +58,7 @@ struct MediaDetailView: View {
           if library.canEdit(identity, role: "status"), let binding = library.connection.bindings.items[identity.kind.rawValue] {
             Menu("Change status") {
               ForEach(binding.statuses.keys.sorted(), id: \.self) { status in
-                Button(status) { Task { changing = true; await library.setConsumption(identity, status: status, date: consumptionDate); changing = false } }
+                Button(status) { Task { changing = true; await library.setConsumption(identity, status: status); changing = false } }
               }
             }.buttonStyle(.bordered).disabled(changing)
           }
@@ -85,7 +86,7 @@ struct MediaDetailView: View {
                   VStack(alignment: .leading, spacing: 4) { Text(episode.title); Text(episode.status).font(.caption).foregroundStyle(.secondary) }
                   if !textSize.isAccessibilitySize { Spacer() }
                   if library.canEdit(episode.identity, role: "status"), let binding = library.connection.bindings.items[MediaKind.tvEpisode.rawValue] {
-                    Menu("Status") { ForEach(binding.statuses.keys.sorted(), id: \.self) { status in Button(status) { Task { await library.setConsumption(episode.identity, status: status, date: consumptionDate) } } } }
+                    Menu("Status") { ForEach(binding.statuses.keys.sorted(), id: \.self) { status in Button(status) { Task { await library.setConsumption(episode.identity, status: status) } } } }
                       .accessibilityLabel("Status for \(episode.title)")
                   }
                 }.padding(.vertical, 8)
@@ -114,7 +115,7 @@ struct MediaDetailView: View {
       }
       #endif
       .sheet(isPresented: $showFields) { MediaUserFieldsView(library: library, identity: identity) }
-      .sheet(isPresented: $showReview) { review }
+      .sheet(isPresented: $showReview) { review.onAppear { dateChoice = .existing } }
       .sheet(item: $seasonSelection) { selection in seasonPreview(selection.episodes) }
   }
   private var adaptiveRow: AnyLayout {
@@ -125,10 +126,22 @@ struct MediaDetailView: View {
     ScrollView { VStack(alignment: .leading, spacing: 18) {
       Text("Update this item?").font(.title2.bold())
       Text("Opening it doesn’t change its status. Choose a status only if you want to record what you watched or read.").foregroundStyle(.secondary)
-      if library.canEdit(identity, role: "consumedAt") { DatePicker("Consumption date", selection: $consumptionDate, displayedComponents: .date) }
+      if library.canEdit(identity, role: "consumedAt") {
+        Picker("Consumption date", selection: $dateChoice) {
+          Text("Keep existing date").tag(ConsumptionDateChoice.existing)
+          Text("Unknown").tag(ConsumptionDateChoice.unknown)
+          Text("Choose a date").tag(ConsumptionDateChoice.chosen)
+        }.accessibilityIdentifier("review.dateChoice")
+        if dateChoice == .chosen { DatePicker("Date", selection: $consumptionDate, displayedComponents: .date).accessibilityIdentifier("review.date") }
+      }
       if let binding = library.connection.bindings.items[identity.kind.rawValue], library.canEdit(identity, role: "status") {
         ForEach(reviewOrder(binding), id: \.self) { status in
-          let record = Button(status) { Task { await library.setConsumption(identity, status: status, date: consumptionDate); library.leaveUnchanged(); showReview = false } }
+          let record = Button(status) { Task { if dateChoice == .existing {
+            await library.setConsumption(identity, status: status)
+          } else {
+            await library.setConsumption(identity, status: status, date: dateChoice == .chosen ? consumptionDate : nil)
+          }
+          library.leaveUnchanged(); showReview = false } }
           if binding.statuses[status] == .finished { record.buttonStyle(.borderedProminent) } else { record.buttonStyle(.bordered) }
         }
       }
@@ -247,3 +260,5 @@ private struct SeasonSelection: Identifiable {
   let episodes: [MediaItem]
   var id: Int { season }
 }
+
+private enum ConsumptionDateChoice: Hashable { case existing, unknown, chosen }

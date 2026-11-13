@@ -287,13 +287,26 @@ public struct BulkEditResult: Identifiable, Sendable {
     }
     return await apply(id, record: record, binding: binding, values: patch)
   }
+  /// A status-only action preserves the recorded date, including an unknown date.
+  @discardableResult public func setConsumption(_ id: MediaIdentity, status: String) async -> Bool {
+    guard let binding = connection.bindings.items[id.kind.rawValue], let record = records[id] else { return false }
+    let value = binding.fields["consumedAt"].flatMap { record.row[$0] } ?? .null
+    return await setConsumption(id, status: status, dateValue: value)
+  }
   @discardableResult public func setConsumption(_ id: MediaIdentity, status: String, date: Date?) async -> Bool {
+    guard let binding = connection.bindings.items[id.kind.rawValue] else { return false }
+    let dateOnly = binding.fields["consumedAt"].map { column in
+      connection.metadata[binding.table]?.first { $0.column == column }?.type == "date"
+    } ?? false
+    let value: CoreJSONValue = date.map { .string(dateOnly ? FeedQueryPlan.day($0, calendar: calendar) : FeedQueryPlan.timestamp($0)) } ?? .null
+    return await setConsumption(id, status: status, dateValue: value)
+  }
+  private func setConsumption(_ id: MediaIdentity, status: String, dateValue: CoreJSONValue) async -> Bool {
     guard canEdit(id, role: "status"), let binding = connection.bindings.items[id.kind.rawValue],
       let state = binding.statuses[status], let statusColumn = binding.fields["status"], let record = records[id] else { return false }
     var values: CoreRow = [statusColumn: .string(status)]
     if let column = binding.fields["consumedAt"], canEdit(id, role: "consumedAt") {
-      let dateOnly = connection.metadata[binding.table]?.first { $0.column == column }?.type == "date"
-      values[column] = !state.isActive ? date.map { .string(dateOnly ? FeedQueryPlan.day($0, calendar: calendar) : FeedQueryPlan.timestamp($0)) } ?? .null : .null
+      values[column] = !state.isActive ? dateValue : .null
     }
     return await apply(id, record: record, binding: binding, values: values)
   }
@@ -324,7 +337,7 @@ public struct BulkEditResult: Identifiable, Sendable {
         let label = binding.statuses.keys.sorted().first(where: { binding.statuses[$0] == .finished }) else {
         bulkResults.append(.init(id: item.identity, title: item.title, committed: false)); continue
       }
-      let committed = await setConsumption(item.identity, status: label, date: now)
+      let committed = await setConsumption(item.identity, status: label)
       bulkResults.append(.init(id: item.identity, title: item.title, committed: committed))
     }
   }
