@@ -432,3 +432,10 @@ Model integration tests compile the actual shared app model through a source sym
 in the MediaKit test target; no model copy or native app build is needed.
 
 Ordinary check workflows run on main pushes and pull requests, with superseded runs canceled. Long UI and accessibility suites run only through manual workflow dispatch.
+
+## Install page icons
+
+The shared OTA install publisher embeds one composed phone-and-download SVG
+master and its opaque 180/192/512-pixel home-screen renders. Icon links use
+the configured install base URL; verify routes and install links with
+`python3 -B scripts/ota_install_test.py`. The publisher stays self-contained.
