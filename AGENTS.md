@@ -101,6 +101,7 @@ There is no analytics SDK or mobile notification permission.
 | `core/hub.py` | `CachedHub` (every read from the poller's cached copy, kept current with `table_pull`; known edge IDs; write passthrough that marks the table for re-read), `HubClient` (`post`/`insert`/`push`/revision-checked `patch`), `load_state`/`save_state` (gzip JSON in the Volume), `imported_from` (canonical edge ID), `legacy_edge_id`, `now_iso` |
 | `core/table_pull.py` | Soma's incremental table-pull helper, vendored verbatim - update by re-copying from the soma repo, never edit |
 | `core/tmdb.py` | TMDB show/season lookups -> `tv_episodes` rows |
+| `core/availability.py` | Strict country-specific TMDB Subscription/Rent/Buy response parser; malformed results fail instead of becoming empty availability |
 | `core/youtube.py` | Uploads-playlist paging, video durations, channel resolution -> `youtube_videos` rows |
 | `core/feeds.py` | RSS, link scraping, Bluesky and Chrome dispatch -> `articles` rows |
 | `core/bluesky.py` | Public author-feed pagination, DID-based post IDs and original content |

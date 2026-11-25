@@ -105,27 +105,33 @@ class ServerTests(unittest.TestCase):
     def test_page_links_icons_served_without_publishing_an_app(self):
         ota = load()
         with tempfile.TemporaryDirectory() as tmp:
-            base = 'https://host.example.ts.net/install'
-            server = ota.make_server(Path(tmp) / 'www', base, 0)
+            base = "https://host.example.ts.net/install"
+            server = ota.make_server(Path(tmp) / "www", base, 0)
             worker = threading.Thread(target=server.serve_forever, daemon=True)
             worker.start()
-            url = f'http://127.0.0.1:{server.server_address[1]}'
+            url = f"http://127.0.0.1:{server.server_address[1]}"
             try:
-                page = urllib.request.urlopen(url + '/').read().decode()
+                page = urllib.request.urlopen(url + "/").read().decode()
                 self.assertIn(f'rel="icon" type="image/svg+xml" href="{base}/favicon.svg"', page)
-                self.assertIn(f'rel="apple-touch-icon" sizes="180x180" href="{base}/apple-touch-icon.png"', page)
-                with urllib.request.urlopen(url + '/favicon.svg?v=1') as response:
-                    self.assertEqual(response.headers.get_content_type(), 'image/svg+xml')
-                    self.assertIn(b'<svg', response.read())
-                for name, size in [('apple-touch-icon.png', 180), ('icon-192.png', 192),
-                                   ('icon-512.png', 512)]:
-                    with urllib.request.urlopen(url + '/' + name) as response:
-                        self.assertEqual(response.headers.get_content_type(), 'image/png')
+                self.assertIn(
+                    f'rel="apple-touch-icon" sizes="180x180" href="{base}/apple-touch-icon.png"',
+                    page,
+                )
+                with urllib.request.urlopen(url + "/favicon.svg?v=1") as response:
+                    self.assertEqual(response.headers.get_content_type(), "image/svg+xml")
+                    self.assertIn(b"<svg", response.read())
+                for name, size in [
+                    ("apple-touch-icon.png", 180),
+                    ("icon-192.png", 192),
+                    ("icon-512.png", 512),
+                ]:
+                    with urllib.request.urlopen(url + "/" + name) as response:
+                        self.assertEqual(response.headers.get_content_type(), "image/png")
                         png = response.read()
-                        self.assertEqual(png[:8], b'\x89PNG\r\n\x1a\n')
-                        self.assertEqual(int.from_bytes(png[16:20], 'big'), size)
-                        self.assertEqual(int.from_bytes(png[20:24], 'big'), size)
-                self.assertFalse((Path(tmp) / 'www').exists())
+                        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+                        self.assertEqual(int.from_bytes(png[16:20], "big"), size)
+                        self.assertEqual(int.from_bytes(png[20:24], "big"), size)
+                self.assertFalse((Path(tmp) / "www").exists())
             finally:
                 server.shutdown()
                 worker.join()

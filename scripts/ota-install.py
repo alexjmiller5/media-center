@@ -79,6 +79,8 @@ SOFTWARE.
 <path d="M12 4l0 12"/>
 </g>
 </svg>"""
+# Generated image bytes retain their generator's formatting.
+# fmt: off
 ICON_PNGS = {
     'apple-touch-icon.png': base64.b64decode(
         'iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAA'
@@ -556,6 +558,8 @@ ICON_PNGS = {
     ),
 }
 
+# fmt: on
+
 
 def read_ipa(ipa):
     try:
@@ -646,10 +650,10 @@ def render_index(listed, base):
     )
     return (
         '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<link rel="icon" type="image/svg+xml" href="{html.escape(base)}/favicon.svg">'
-            f'<link rel="apple-touch-icon" sizes="180x180" href="{html.escape(base)}/apple-touch-icon.png">'
-            f'<link rel="icon" type="image/png" sizes="192x192" href="{html.escape(base)}/icon-192.png">'
-            f'<link rel="icon" type="image/png" sizes="512x512" href="{html.escape(base)}/icon-512.png">'
+        f'<link rel="icon" type="image/svg+xml" href="{html.escape(base)}/favicon.svg">'
+        f'<link rel="apple-touch-icon" sizes="180x180" href="{html.escape(base)}/apple-touch-icon.png">'
+        f'<link rel="icon" type="image/png" sizes="192x192" href="{html.escape(base)}/icon-192.png">'
+        f'<link rel="icon" type="image/png" sizes="512x512" href="{html.escape(base)}/icon-512.png">'
         '<title>Install</title><body style="font:20px -apple-system;padding:48px 24px;text-align:center">'
         f"{sections}</body>"
     )
@@ -671,10 +675,10 @@ def make_server(www, base, port):
 
         def do_GET(self):
             route = self.path.split("?")[0]
-            if route == '/favicon.svg':
-                return self.send_body(ICON_SVG, 'image/svg+xml')
-            if route.lstrip('/') in ICON_PNGS:
-                return self.send_body(ICON_PNGS[route.lstrip('/')], 'image/png')
+            if route == "/favicon.svg":
+                return self.send_body(ICON_SVG, "image/svg+xml")
+            if route.lstrip("/") in ICON_PNGS:
+                return self.send_body(ICON_PNGS[route.lstrip("/")], "image/png")
             if route == "/healthz":
                 return self.send_body("ota-install", "text/plain")
             if route in ("/", "/index.html"):
